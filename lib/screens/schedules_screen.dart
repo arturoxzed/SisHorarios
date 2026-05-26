@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/schedule_generator.dart';
 import '../theme/app_theme.dart';
+import 'conflict_resolution_screen.dart';
+
 
 class SchedulesScreen extends StatefulWidget {
   const SchedulesScreen({super.key});
@@ -135,6 +137,23 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
                       provider.clearSchedules();
                       setState(() => _lastResult = null);
                     }
+                  },
+                ),
+                if (provider.schedules.isNotEmpty)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18,
+                      color: Color(0xFFDC2626)),
+                  label: const Text(
+                    'Resolver conflictos',
+                    style: TextStyle(color: Color(0xFFDC2626)),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFDC2626)),
+                  ),
+                  onPressed: () {
+                    context
+                        .read<AppProvider>()
+                        .navigate(AppScreen.conflictResolution);
                   },
                 ),
             ],

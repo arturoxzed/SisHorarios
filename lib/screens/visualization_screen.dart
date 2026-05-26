@@ -143,7 +143,7 @@ class _VisualizationScreenState extends State<VisualizationScreen>
                             Icon(Icons.save_alt_rounded,
                                 color: Colors.white, size: 16),
                             SizedBox(width: 6),
-                            Text('Guardar PDF',  
+                            Text('Guardar PDF',
                                 style: TextStyle(
                                     color: Colors.white, fontSize: 13)),
                             SizedBox(width: 4),
@@ -160,8 +160,7 @@ class _VisualizationScreenState extends State<VisualizationScreen>
                             value: 'teacher',
                             child: Text('Horario de este maestro')),
                         const PopupMenuItem(
-                            value: 'all',
-                            child: Text('Todos los horarios')),
+                            value: 'all', child: Text('Todos los horarios')),
                       ],
                       onSelected: (v) => _export(v, context),
                     ),
@@ -222,6 +221,29 @@ class _VisualizationScreenState extends State<VisualizationScreen>
                             ),
                           ),
                         ),
+                      if (provider.filterGradeId != null)
+                        SizedBox(
+                          width: 140,
+                          child: DropdownButtonFormField<String?>(
+                            value: provider.filterSectionId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                hintText: 'Grupo', isDense: true),
+                            items: [
+                              const DropdownMenuItem(
+                                  value: null, child: Text('Todos')),
+                              ...provider
+                                  .sectionsForGrade(provider.filterGradeId!)
+                                  .map((s) => DropdownMenuItem(
+                                      value: s.id, child: Text(s.name))),
+                            ],
+                            onChanged: (v) => provider.setFilter(
+                              levelId: provider.filterLevelId,
+                              gradeId: provider.filterGradeId,
+                              sectionId: v,
+                            ),
+                          ),
+                        ),
                     ] else
                       SizedBox(
                         width: 210,
@@ -232,8 +254,7 @@ class _VisualizationScreenState extends State<VisualizationScreen>
                               hintText: 'Seleccionar maestro', isDense: true),
                           items: [
                             const DropdownMenuItem(
-                                value: null,
-                                child: Text('Todos los maestros')),
+                                value: null, child: Text('Todos los maestros')),
                             ...provider.teachers.map((t) => DropdownMenuItem(
                                 value: t.id, child: Text(t.fullName))),
                           ],
@@ -267,7 +288,10 @@ class _VisualizationScreenState extends State<VisualizationScreen>
   Future<void> _export(String type, BuildContext context) async {
     final provider = context.read<AppProvider>();
     setState(() => _exporting = true);
-    String? savedPath;
+
+    // For 'all' we accumulate results; for single exports we use the last one.
+    PdfExportResult? lastResult;
+
     try {
       if (type == 'all') {
         for (final sched in provider.schedules) {
@@ -275,24 +299,29 @@ class _VisualizationScreenState extends State<VisualizationScreen>
           final grade =
               section != null ? provider.findGrade(section.gradeId) : null;
           if (section != null && grade != null) {
-            savedPath = await _pdfService.exportSectionSchedule(
+            lastResult = await _pdfService.exportSectionSchedule(
               schedule: sched,
               section: section,
               grade: grade,
               subjects: provider.subjects,
               teachers: provider.teachers,
+              suggestedName: 'horario_${section.name}_${grade.name}',
             );
+            // If user cancelled the first dialog, stop the loop.
+            if (lastResult.cancelled) break;
           }
         }
       } else if (type == 'teacher' && _selectedTeacherId != null) {
         final teacher = provider.findTeacher(_selectedTeacherId!);
         if (teacher != null) {
-          savedPath = await _pdfService.exportTeacherSchedule(
+          lastResult = await _pdfService.exportTeacherSchedule(
             teacher: teacher,
             allSchedules: provider.schedules,
             grades: provider.grades,
             sections: provider.allSections,
             subjects: provider.subjects,
+            suggestedName:
+                'horario_maestro_${teacher.fullName}'.replaceAll(' ', '_'),
           );
         }
       } else {
@@ -303,12 +332,13 @@ class _VisualizationScreenState extends State<VisualizationScreen>
           final grade =
               section != null ? provider.findGrade(section.gradeId) : null;
           if (section != null && grade != null) {
-            savedPath = await _pdfService.exportSectionSchedule(
+            lastResult = await _pdfService.exportSectionSchedule(
               schedule: sched,
               section: section,
               grade: grade,
               subjects: provider.subjects,
               teachers: provider.teachers,
+              suggestedName: 'horario_${section.name}_${grade.name}',
             );
           }
         }
@@ -320,15 +350,25 @@ class _VisualizationScreenState extends State<VisualizationScreen>
             backgroundColor: AppTheme.error));
       }
     }
-    if (mounted) {
-      setState(() => _exporting = false);
-      if (savedPath != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('PDF guardado en: $savedPath'),
-          backgroundColor: AppTheme.success,
-          duration: const Duration(seconds: 6),
-        ));
-      }
+
+    if (!mounted) return;
+    setState(() => _exporting = false);
+
+    if (lastResult == null || lastResult.cancelled) return;
+
+    if (lastResult.success) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(lastResult.savedPath != null
+            ? 'PDF guardado en: ${lastResult.savedPath}'
+            : 'PDF listo para descarga.'),
+        backgroundColor: AppTheme.success,
+        duration: const Duration(seconds: 6),
+      ));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error al guardar PDF: ${lastResult.error}'),
+        backgroundColor: AppTheme.error,
+      ));
     }
   }
 }
@@ -360,6 +400,10 @@ class _SectionView extends StatelessWidget {
             section != null ? provider.findGrade(section.gradeId) : null;
 
         if (section == null || grade == null) return const SizedBox();
+
+        // No modificar sessionsPerDay aquí — ScheduleTableWidget ya aplica
+        // la lógica de salida anticipada por día usando sessionsForDay(day).
+        // Modificarlo aquí recortaba las filas en TODOS los días, no solo viernes.
 
         final headerLabel = grade.sections.isEmpty
             ? grade.name
@@ -406,8 +450,8 @@ class _SectionView extends StatelessWidget {
                     if (sched.hasConflicts)
                       const Chip(
                         label: Text('⚠ Con conflictos',
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.white)),
+                            style:
+                                TextStyle(fontSize: 11, color: Colors.white)),
                         backgroundColor: AppTheme.warning,
                         visualDensity: VisualDensity.compact,
                       ),
@@ -419,8 +463,8 @@ class _SectionView extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text('${sched.slots.length} clases',
-                        style: const TextStyle(
-                            color: Colors.grey, fontSize: 12)),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               ),
@@ -500,12 +544,10 @@ class _SectionView extends StatelessWidget {
                 DropdownButtonFormField<String?>(
                   value: selectedSubjectId,
                   isExpanded: true,
-                  decoration:
-                      const InputDecoration(hintText: 'Sin materia'),
+                  decoration: const InputDecoration(hintText: 'Sin materia'),
                   items: [
                     const DropdownMenuItem(
-                        value: null,
-                        child: Text('— Limpiar celda —')),
+                        value: null, child: Text('— Limpiar celda —')),
                     ...levelSubjects.map((s) =>
                         DropdownMenuItem(value: s.id, child: Text(s.name))),
                   ],
@@ -521,8 +563,8 @@ class _SectionView extends StatelessWidget {
                 DropdownButtonFormField<String?>(
                   value: selectedTeacherId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                      hintText: 'Seleccionar maestro'),
+                  decoration:
+                      const InputDecoration(hintText: 'Seleccionar maestro'),
                   items: [
                     const DropdownMenuItem(
                         value: null, child: Text('— Sin maestro —')),
@@ -533,8 +575,7 @@ class _SectionView extends StatelessWidget {
                         .map((t) => DropdownMenuItem(
                             value: t.id, child: Text(t.fullName))),
                   ],
-                  onChanged: (v) =>
-                      setState(() => selectedTeacherId = v),
+                  onChanged: (v) => setState(() => selectedTeacherId = v),
                 ),
               ],
             ),
@@ -596,19 +637,24 @@ class _TeacherView extends StatelessWidget {
         // Collect ALL section labels per (day, period) so shared blocks show
         // every group the teacher is with at that time.
         final Map<String, List<String>> slotSectionLabels = {};
+        // Track which sectionIds have already contributed a label per key
+        // to prevent duplicate group names when a sectionId appears more than once.
+        final Map<String, Set<String>> seenSectionPerKey = {};
         for (final sched in provider.schedules) {
           for (final slot in sched.slots) {
             if (slot.teacherId != teacher.id) continue;
             final key = '${slot.day}-${slot.periodIndex}';
             // Build section label for this schedule entry.
             final sec = provider.findSection(sched.sectionId);
-            final gr  = sec != null ? provider.findGrade(sec.gradeId) : null;
+            final gr = sec != null ? provider.findGrade(sec.gradeId) : null;
             final label = sec != null
                 ? (gr != null ? '${gr.name} ${sec.name}' : sec.name)
                 : null;
             if (label != null) {
               slotSectionLabels.putIfAbsent(key, () => []);
-              if (!slotSectionLabels[key]!.contains(label)) {
+              seenSectionPerKey.putIfAbsent(key, () => {});
+              // Deduplicate by sectionId to avoid the same group appearing twice
+              if (seenSectionPerKey[key]!.add(sched.sectionId)) {
                 slotSectionLabels[key]!.add(label);
               }
             }
@@ -621,8 +667,7 @@ class _TeacherView extends StatelessWidget {
         }
         // Flatten label lists to a single display string per slot key.
         final Map<String, String> slotSectionMap = {
-          for (final e in slotSectionLabels.entries)
-            e.key: e.value.join(' / '),
+          for (final e in slotSectionLabels.entries) e.key: e.value.join(' / '),
         };
 
         Grade? grade;
@@ -636,11 +681,13 @@ class _TeacherView extends StatelessWidget {
           return Card(
             child: ListTile(
               title: Text(teacher.fullName),
-              subtitle:
-                  const Text('Sin clases asignadas esta semana.'),
+              subtitle: const Text('Sin clases asignadas esta semana.'),
             ),
           );
         }
+
+        // No modificar sessionsPerDay — el widget ya usa sessionsForDay(day)
+        // para ocultar celdas solo en viernes si hay salida anticipada.
 
         final teacherSched = SectionSchedule(
           id: 'teacher-${teacher.id}',
@@ -654,8 +701,8 @@ class _TeacherView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: const BoxDecoration(
                   color: Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.only(
@@ -672,8 +719,8 @@ class _TeacherView extends StatelessWidget {
                         teacher.name.isNotEmpty
                             ? teacher.name[0].toUpperCase()
                             : '?',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -683,8 +730,8 @@ class _TeacherView extends StatelessWidget {
                               fontWeight: FontWeight.w600, fontSize: 15)),
                     ),
                     Text('${teacherSlots.length} clases/sem',
-                        style: const TextStyle(
-                            color: Colors.grey, fontSize: 12)),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               ),
@@ -723,7 +770,8 @@ class _ConflictResolutionView extends StatelessWidget {
     for (final sched in provider.schedules) {
       if (!sched.hasConflicts) continue;
       final section = provider.findSection(sched.sectionId);
-      final grade = section != null ? provider.findGrade(section.gradeId) : null;
+      final grade =
+          section != null ? provider.findGrade(section.gradeId) : null;
       final label = (grade != null)
           ? '${grade.name} — ${section!.name}'
           : (section?.name ?? sched.sectionId);
@@ -873,8 +921,8 @@ class _ConflictResolutionView extends StatelessWidget {
                 ],
               ],
               // Teacher double-booking conflicts
-              ...conflicts.asMap().entries.map((e) =>
-                  _ConflictCard(conflict: e.value, index: e.key + 1)),
+              ...conflicts.asMap().entries.map(
+                  (e) => _ConflictCard(conflict: e.value, index: e.key + 1)),
             ],
           ),
         ),
@@ -981,11 +1029,9 @@ class _ConflictCard extends StatelessWidget {
     final teacher = conflict.teacher;
 
     // Look up the grade for the first section to get session labels
-    final firstSection =
-        provider.findSection(conflict.slots.first.sectionId);
-    final grade = firstSection != null
-        ? provider.findGrade(firstSection.gradeId)
-        : null;
+    final firstSection = provider.findSection(conflict.slots.first.sectionId);
+    final grade =
+        firstSection != null ? provider.findGrade(firstSection.gradeId) : null;
     final sessionLabel = (grade != null &&
             conflict.periodIndex < grade.config.sessionLabels.length)
         ? grade.config.sessionLabels[conflict.periodIndex]
@@ -995,7 +1041,8 @@ class _ConflictCard extends StatelessWidget {
         teacher.name.codeUnitAt(0) % AppTheme.subjectColors.length];
     final initials = teacher.name.isNotEmpty && teacher.lastName.isNotEmpty
         ? '${teacher.name[0]}${teacher.lastName[0]}'.toUpperCase()
-        : teacher.name.substring(0, teacher.name.length > 1 ? 2 : 1)
+        : teacher.name
+            .substring(0, teacher.name.length > 1 ? 2 : 1)
             .toUpperCase();
 
     return Card(
@@ -1054,13 +1101,12 @@ class _ConflictCard extends StatelessWidget {
                 ),
                 // Conflict type chip
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: AppTheme.error.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color: AppTheme.error.withOpacity(0.3)),
+                    border: Border.all(color: AppTheme.error.withOpacity(0.3)),
                   ),
                   child: const Text(
                     'Doble asignación',
@@ -1154,8 +1200,7 @@ class _SlotChip extends StatelessWidget {
           const SizedBox(height: 6),
           // Subject chip
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(6),
@@ -1163,9 +1208,7 @@ class _SlotChip extends StatelessWidget {
             child: Text(
               slotInfo.subject?.name ?? 'Sin materia',
               style: TextStyle(
-                  color: textColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600),
+                  color: textColor, fontSize: 11, fontWeight: FontWeight.w600),
             ),
           ),
           const SizedBox(height: 10),
@@ -1213,10 +1256,10 @@ class _SlotChip extends StatelessWidget {
     String? selectedSubjectId = current?.subjectId;
     String? selectedTeacherId = current?.teacherId;
 
-    final sessionLabel = (conflict.periodIndex <
-            grade!.config.sessionLabels.length)
-        ? grade!.config.sessionLabels[conflict.periodIndex]
-        : 'S${conflict.periodIndex + 1}';
+    final sessionLabel =
+        (conflict.periodIndex < grade!.config.sessionLabels.length)
+            ? grade!.config.sessionLabels[conflict.periodIndex]
+            : 'S${conflict.periodIndex + 1}';
 
     await showDialog(
       context: context,
@@ -1263,14 +1306,12 @@ class _SlotChip extends StatelessWidget {
                 DropdownButtonFormField<String?>(
                   value: selectedSubjectId,
                   isExpanded: true,
-                  decoration:
-                      const InputDecoration(hintText: 'Sin materia'),
+                  decoration: const InputDecoration(hintText: 'Sin materia'),
                   items: [
                     const DropdownMenuItem(
-                        value: null,
-                        child: Text('— Limpiar celda —')),
-                    ...levelSubjects.map((s) => DropdownMenuItem(
-                        value: s.id, child: Text(s.name))),
+                        value: null, child: Text('— Limpiar celda —')),
+                    ...levelSubjects.map((s) =>
+                        DropdownMenuItem(value: s.id, child: Text(s.name))),
                   ],
                   onChanged: (v) => setState(() {
                     selectedSubjectId = v;
@@ -1284,8 +1325,8 @@ class _SlotChip extends StatelessWidget {
                 DropdownButtonFormField<String?>(
                   value: selectedTeacherId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                      hintText: 'Seleccionar maestro'),
+                  decoration:
+                      const InputDecoration(hintText: 'Seleccionar maestro'),
                   items: [
                     const DropdownMenuItem(
                         value: null, child: Text('— Sin maestro —')),
@@ -1310,8 +1351,7 @@ class _SlotChip extends StatelessWidget {
                               ],
                             ))),
                   ],
-                  onChanged: (v) =>
-                      setState(() => selectedTeacherId = v),
+                  onChanged: (v) => setState(() => selectedTeacherId = v),
                 ),
               ],
             ),

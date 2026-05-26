@@ -115,21 +115,51 @@ class EducationalLevel {
   final String name;
   final LevelType type;
 
+  // ── Salida programada igual para todos los grupos ────────────────────────
+  /// Si true, todos los grados y grupos de este nivel salen a la misma hora
+  /// todos los días de la semana.
+  final bool scheduledDismissal;
+
+  /// Índice 0-based de la última sesión del día (default 6 = sesión 7).
+  final int dismissalSessionIndex;
+
   const EducationalLevel({
     required this.id,
     required this.name,
     required this.type,
+    this.scheduledDismissal = false,
+    this.dismissalSessionIndex = 6,
   });
 
-  EducationalLevel copyWith({String? id, String? name, LevelType? type}) =>
-      EducationalLevel(id: id ?? this.id, name: name ?? this.name, type: type ?? this.type);
+  EducationalLevel copyWith({
+    String? id,
+    String? name,
+    LevelType? type,
+    bool? scheduledDismissal,
+    int? dismissalSessionIndex,
+  }) =>
+      EducationalLevel(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        type: type ?? this.type,
+        scheduledDismissal: scheduledDismissal ?? this.scheduledDismissal,
+        dismissalSessionIndex: dismissalSessionIndex ?? this.dismissalSessionIndex,
+      );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'type': type.index};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type.index,
+        'scheduledDismissal': scheduledDismissal,
+        'dismissalSessionIndex': dismissalSessionIndex,
+      };
 
   factory EducationalLevel.fromJson(Map<String, dynamic> j) => EducationalLevel(
         id: j['id'],
         name: j['name'],
         type: LevelType.values[j['type'] as int],
+        scheduledDismissal: j['scheduledDismissal'] ?? false,
+        dismissalSessionIndex: j['dismissalSessionIndex'] ?? 6,
       );
 }
 

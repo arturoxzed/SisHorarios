@@ -39,7 +39,15 @@ class ScheduleTableWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final config   = grade.config;
     final days     = config.classDays;
-    final sessions = config.sessionsPerDay;
+    // Usar el máximo de sesiones entre todos los días.
+    // Si el viernes tiene salida anticipada (ej. 7 sesiones) y los demás
+    // días tienen 8, se generan 8 filas y la celda del viernes en la fila 8
+    // muestra _DisabledCell.  Pero si ningún día llega a 8 (viernes
+    // incluido), esa fila simplemente no existe.
+    final sessions = days.fold<int>(0, (m, d) {
+      final s = config.sessionsForDay(d);
+      return s > m ? s : m;
+    });
     final labels   = config.sessionLabels;
 
     Subject? findSubject(String id) {
@@ -50,11 +58,11 @@ class ScheduleTableWidget extends StatelessWidget {
       try { return teachers.firstWhere((t) => t.id == id); } catch (_) { return null; }
     }
 
-    final cellW = compact ? 110.0 : 140.0;
-    final cellH = compact ? 52.0  : 64.0;
-    final timeW = compact ? 110.0 : 130.0;
+    final cellW = compact ? 120.0 : 150.0;
+    final cellH = compact ? 72.0  : 88.0;
+    final timeW = compact ? 120.0 : 140.0;
     // Break row is shorter — just enough to show the time range
-    final breakH = compact ? 28.0  : 32.0;
+    final breakH = compact ? 34.0  : 38.0;
 
     // Determine where the break row goes (after which session index).
     // -1 means no break; value >= sessions means break is after all rows.
@@ -350,7 +358,7 @@ class _SubjectCell extends StatelessWidget {
               fontWeight: FontWeight.w700,
               fontSize: compact ? 10 : 11,
             ),
-            maxLines: compact ? 1 : 2,
+            maxLines: compact ? 2 : 3,
             overflow: TextOverflow.ellipsis,
           ),
           // Teacher name

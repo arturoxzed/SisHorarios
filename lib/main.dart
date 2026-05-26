@@ -9,6 +9,7 @@ import 'screens/subjects_screen.dart';
 import 'screens/teachers_screen.dart';
 import 'screens/schedules_screen.dart';
 import 'screens/visualization_screen.dart';
+import 'screens/conflict_resolution_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,6 +78,7 @@ class _ScreenRouter extends StatelessWidget {
           AppScreen.teachers => const TeachersScreen(),
           AppScreen.schedules => const SchedulesScreen(),
           AppScreen.visualization => const VisualizationScreen(),
+          AppScreen.conflictResolution => const ConflictResolutionScreen(),
         },
       ),
     );

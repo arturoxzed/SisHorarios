@@ -82,9 +82,31 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                         ? FontWeight.w600
                                         : FontWeight.normal,
                                   )),
-                              subtitle: Text(
-                                '${provider.gradesForLevel(level.id).length} grados',
-                                style: const TextStyle(fontSize: 11),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${provider.gradesForLevel(level.id).length} grados',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  if (level.scheduledDismissal)
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.exit_to_app_rounded,
+                                            size: 11,
+                                            color: Color(0xFF2563EB)),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'Salida: sesión ${level.dismissalSessionIndex + 1}',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Color(0xFF2563EB),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
                               ),
                               trailing: PopupMenuButton(
                                 iconSize: 16,
@@ -363,14 +385,6 @@ class _GradeDetailPanel extends StatelessWidget {
                                   icon: Icons.free_breakfast_rounded,
                                   label:
                                       'Receso ${config.breakStart}–${config.breakEnd}'),
-                            if (config.fridayEarlyDismissal &&
-                                config.fridayLastSession >= 0)
-                              _ConfigChip(
-                                icon: Icons.event_available_rounded,
-                                label:
-                                    'Viernes: ${config.fridayLastSession + 1} ses. · ${config.fridayDismissalTime}',
-                                highlight: true,
-                              ),
                           ],
                         ),
                       ],

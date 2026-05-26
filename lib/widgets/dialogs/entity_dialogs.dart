@@ -124,7 +124,6 @@ class _GradeDialogState extends State<GradeDialog> {
   late final TextEditingController _nameCtrl;
   late GradeConfig _config;
   bool _breakEnabled = false;
-  bool _fridayEnabled = false;
 
   @override
   void initState() {
@@ -132,7 +131,6 @@ class _GradeDialogState extends State<GradeDialog> {
     _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
     _config = widget.existing?.config ?? const GradeConfig();
     _breakEnabled = _config.hasBreak;
-    _fridayEnabled = _config.fridayEarlyDismissal;
   }
 
   @override
@@ -370,118 +368,6 @@ class _GradeDialogState extends State<GradeDialog> {
                 ),
             ],
 
-            // ── Friday early-dismissal ────────────────────────────────────
-            const SizedBox(height: 16),
-            const Text('Salida temprana los viernes',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Switch(
-                  value: _fridayEnabled,
-                  onChanged: (v) {
-                    setState(() {
-                      _fridayEnabled = v;
-                      _config = _config.copyWith(
-                        fridayEarlyDismissal: v,
-                        fridayLastSession: v
-                            ? (_config.sessionsPerDay - 2).clamp(0, _config.sessionsPerDay - 1)
-                            : -1,
-                      );
-                    });
-                  },
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _fridayEnabled ? 'Activo' : 'Sin cambio',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ],
-            ),
-            if (_fridayEnabled) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  // Dismissal time
-                  SizedBox(
-                    width: 190,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Hora de salida',
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          value: _config.fridayDismissalTime,
-                          isExpanded: true,
-                          decoration: const InputDecoration(),
-                          items: _timeOptions()
-                              .map((t) =>
-                                  DropdownMenuItem(value: t, child: Text(t)))
-                              .toList(),
-                          onChanged: (v) => setState(() =>
-                              _config = _config.copyWith(fridayDismissalTime: v)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Last session on Friday
-                  SizedBox(
-                    width: 190,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Última sesión del viernes',
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        DropdownButtonFormField<int>(
-                          value: _config.fridayLastSession
-                              .clamp(0, _config.sessionsPerDay - 1),
-                          isExpanded: true,
-                          decoration: const InputDecoration(),
-                          items: List.generate(
-                            _config.sessionsPerDay,
-                            (i) => DropdownMenuItem(
-                              value: i,
-                              child: Text('Sesión ${i + 1}'),
-                            ),
-                          ),
-                          onChanged: (v) => setState(() =>
-                              _config = _config.copyWith(fridayLastSession: v)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.info_rounded,
-                        size: 14, color: Color(0xFF2563EB)),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Los viernes: ${_config.fridayLastSession + 1} sesiones, '
-                      'salida a las ${_config.fridayDismissalTime}',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF2563EB)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -512,17 +398,20 @@ class _GradeDialogState extends State<GradeDialog> {
     }
     Navigator.pop(context);
   }
+}
 
-  static List<String> _timeOptions() {
-    final opts = <String>[];
-    for (int h = 6; h < 18; h++) {
-      for (int m = 0; m < 60; m += 5) {
-        opts.add(
-            '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}');
-      }
+// ─────────────────────────────────────────────────────────────────────────────
+// TIME OPTIONS HELPER  (shared across dialogs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+List<String> _timeOptions() {
+  final opts = <String>[];
+  for (int h = 6; h < 18; h++) {
+    for (int m = 0; m < 60; m += 5) {
+      opts.add('${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}');
     }
-    return opts;
   }
+  return opts;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1786,12 +1675,18 @@ class LevelDialog extends StatefulWidget {
 class _LevelDialogState extends State<LevelDialog> {
   late final TextEditingController _nameCtrl;
   late LevelType _type;
+  bool _dismissalEnabled = false;
+  int _dismissalSessionIndex = 6;
 
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
-    _type     = widget.existing?.type ?? LevelType.primaria;
+    _type = widget.existing?.type ?? LevelType.primaria;
+    if (widget.existing != null) {
+      _dismissalEnabled = widget.existing!.scheduledDismissal;
+      _dismissalSessionIndex = widget.existing!.dismissalSessionIndex;
+    }
   }
 
   @override
@@ -1807,6 +1702,7 @@ class _LevelDialogState extends State<LevelDialog> {
       onSave: _save,
       body: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _field('Nombre del Nivel', _nameCtrl,
               hint: 'Ej: Primaria, Secundaria'),
@@ -1829,6 +1725,112 @@ class _LevelDialogState extends State<LevelDialog> {
               ),
             ],
           ),
+
+          // ── Salida programada ──────────────────────────────────────────
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 12),
+          const Text(
+            'Salida programada igual para todos los grupos',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Al activar esta opción, los grados y grupos de este nivel '
+            'saldrán antes los viernes. '
+            'Selecciona la última sesión que se imparte ese día.',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Checkbox(
+                value: _dismissalEnabled,
+                onChanged: (v) {
+                  setState(() {
+                    _dismissalEnabled = v ?? false;
+                    if (_dismissalEnabled) {
+                      _dismissalSessionIndex = 6;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  _dismissalEnabled
+                      ? 'Salida programada activa para todo el nivel'
+                      : 'Sin salida programada (cada grado termina según su configuración)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _dismissalEnabled
+                        ? AppTheme.primary
+                        : Colors.grey.shade600,
+                    fontWeight: _dismissalEnabled
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (_dismissalEnabled) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 200,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Última sesión del día',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<int>(
+                    value: _dismissalSessionIndex,
+                    isExpanded: true,
+                    decoration: const InputDecoration(),
+                    items: List.generate(
+                      10,
+                      (i) => DropdownMenuItem(
+                        value: i,
+                        child: Text('Sesión ${i + 1}'
+                            '${i == 6 ? ' (por defecto)' : ''}'),
+                      ),
+                    ),
+                    onChanged: (v) => setState(
+                        () => _dismissalSessionIndex = v ?? _dismissalSessionIndex),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.info_rounded,
+                      size: 14, color: Color(0xFF2563EB)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Los viernes terminarán en la sesión '
+                      '${_dismissalSessionIndex + 1} · aplica a todos los grupos del nivel',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF2563EB)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1842,6 +1844,8 @@ class _LevelDialogState extends State<LevelDialog> {
       id: widget.existing?.id ?? _uuid.v4(),
       name: name,
       type: _type,
+      scheduledDismissal: _dismissalEnabled,
+      dismissalSessionIndex: _dismissalSessionIndex,
     );
     if (widget.existing == null) {
       provider.addLevel(level);

@@ -3,7 +3,13 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../services/storage_service.dart';
 import '../services/schedule_generator.dart';
+import '../services/import_export_service.dart';
 import '../theme/app_theme.dart';
+import '../services/conflict_resolver.dart';
+
+export '../services/import_export_service.dart'
+    show ImportExportService, SchoolConfig, ExportResult, ImportResult,
+        ImportExportException, ImportExportErrorKind;
 
 enum AppScreen {
   dashboard,
@@ -11,7 +17,8 @@ enum AppScreen {
   subjects,
   teachers,
   schedules,
-  visualization
+  visualization,
+  conflictResolution,
 }
 
 // ─── Structured conflict data ─────────────────────────────────────────────────
@@ -33,6 +40,7 @@ class ConflictInfo {
   final Teacher teacher;
   final String day;
   final int periodIndex;
+
   /// The clashing slots — always 2 or more entries.
   final List<ConflictSlotInfo> slots;
   const ConflictInfo({
@@ -48,6 +56,7 @@ class AppProvider extends ChangeNotifier {
 
   final StorageService _storage = StorageService();
   final ScheduleGenerator _generator = ScheduleGenerator();
+  final ImportExportService _importExport = ImportExportService();
 
   // ─── State ───────────────────────────────────
   AppScreen currentScreen = AppScreen.dashboard;
@@ -88,13 +97,89 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reemplaza completamente la lista de horarios (p.ej. después de
+  /// que el ConflictResolutionScreen aplica una sugerencia) y persiste.
+  Future<void> replaceSchedules(List<SectionSchedule> updated) async {
+    schedules = updated;
+    await _storage.saveSchedules(updated);
+    notifyListeners();
+  }
+
+  // ─── Import / Export ─────────────────────────────────────────────────────
+
+  /// Exports the current school configuration to a versioned JSON file.
+  ///
+  /// Pass [includeSchedules] = false to export only the structural config
+  /// (levels, grades, subjects, teachers) without generated timetables.
+  Future<ExportResult> exportConfig({
+    bool includeSchedules = true,
+    String suggestedName = 'school_config',
+  }) async {
+    final config = SchoolConfig(
+      levels:    levels,
+      grades:    grades,
+      subjects:  subjects,
+      teachers:  teachers,
+      schedules: includeSchedules ? schedules : const [],
+    );
+    return _importExport.exportConfig(config, suggestedName: suggestedName);
+  }
+
+  /// Opens the file picker, reads and validates the selected JSON file, then
+  /// — on success — *replaces* the entire in-memory state and persists it.
+  ///
+  /// Returns an [ImportResult] so the calling widget can show appropriate
+  /// feedback without knowing internal details.
+  ///
+  /// The previous data is only overwritten when the import succeeds, so a
+  /// failed import leaves the app in its original state.
+  Future<ImportResult> importConfig() async {
+    final result = await _importExport.importConfig();
+    if (!result.success || result.config == null) return result;
+
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      final cfg = result.config!;
+
+      levels    = cfg.levels;
+      grades    = cfg.grades;
+      subjects  = cfg.subjects;
+      teachers  = _migrateLegacyTeachers(cfg.teachers);
+      schedules = cfg.schedules;
+      manualSlots.clear();
+
+      // Reset any active filters so the UI reflects the new data cleanly.
+      filterLevelId   = null;
+      filterGradeId   = null;
+      filterSectionId = null;
+      filterTeacherId = null;
+
+      // Persist every entity via SharedPreferences.
+      await Future.wait([
+        _storage.saveLevels(levels),
+        _storage.saveGrades(grades),
+        _storage.saveSubjects(subjects),
+        _storage.saveTeachers(teachers),
+        _storage.saveSchedules(schedules),
+      ]);
+    } catch (e) {
+      isLoading = false;
+      notifyListeners();
+      return ImportResult.fail('Error al aplicar la importación: $e');
+    }
+
+    isLoading = false;
+    notifyListeners();
+    return result;
+  }
+
   // ─── Legacy migration ─────────────────────────
   //
   // Old Teacher records stored a flat List<String> sectionIds.
   // We convert those to TeacherSubjectAssignment entries by resolving each
   // sectionId to its gradeId through the loaded grades list.
-  // Each subject the teacher teaches is assigned to the grade, with the
-  // specific sectionId if present.
   List<Teacher> _migrateLegacyTeachers(List<Teacher> raw) {
     bool anyMigrated = false;
     final migrated = raw.map((t) {
@@ -102,11 +187,6 @@ class AppProvider extends ChangeNotifier {
 
       anyMigrated = true;
       final newAssignments = <TeacherSubjectAssignment>[];
-
-      if (t.legacySectionIds.isEmpty) {
-        // Unrestricted teacher — no assignments needed.
-        return t.copyWith(assignments: const [], legacySectionIds: const [], sectionIds: []);
-      }
 
       for (final sectionId in t.legacySectionIds) {
         final grade = _findGradeForSection(sectionId);
@@ -126,12 +206,12 @@ class AppProvider extends ChangeNotifier {
 
       return t.copyWith(
         assignments: newAssignments,
-        legacySectionIds: const [], sectionIds: [],
+        legacySectionIds: const [],
+        sectionIds: [],
       );
     }).toList();
 
     if (anyMigrated) {
-      // Persist the migrated data.
       _storage.saveTeachers(migrated);
     }
 
@@ -253,7 +333,21 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> updateLevel(EducationalLevel level) async {
     levels = levels.map((l) => l.id == level.id ? level : l).toList();
+
+    grades = grades.map((g) {
+      if (g.levelId != level.id) return g;
+      return g.copyWith(
+        config: g.config.copyWith(
+          fridayEarlyDismissal: level.scheduledDismissal,
+          fridayLastSession: level.scheduledDismissal
+              ? level.dismissalSessionIndex
+              : -1,
+        ),
+      );
+    }).toList();
+
     await _storage.saveLevels(levels);
+    await _storage.saveGrades(grades);
     notifyListeners();
   }
 
@@ -277,13 +371,13 @@ class AppProvider extends ChangeNotifier {
         .toList();
     for (final sid in {...sectionIds, ...gradeIds}) manualSlots.remove(sid);
 
-    // Remove assignments that reference any of the deleted grades/sections.
     teachers = teachers.map((t) => t.copyWith(
       assignments: t.assignments
           .where((a) =>
               !gradeIds.contains(a.gradeId) &&
               (a.sectionId == null || !sectionIds.contains(a.sectionId)))
-          .toList(), sectionIds: [],
+          .toList(),
+      sectionIds: [],
     )).toList();
 
     levels = levels.where((l) => l.id != id).toList();
@@ -322,13 +416,13 @@ class AppProvider extends ChangeNotifier {
         .toList();
     for (final sid in {...sectionIds, id}) manualSlots.remove(sid);
 
-    // Remove assignments for this grade or any of its sections.
     teachers = teachers.map((t) => t.copyWith(
       assignments: t.assignments
           .where((a) =>
               a.gradeId != id &&
               (a.sectionId == null || !sectionIds.contains(a.sectionId)))
-          .toList(), sectionIds: [],
+          .toList(),
+      sectionIds: [],
     )).toList();
 
     grades = grades.where((g) => g.id != id).toList();
@@ -367,11 +461,11 @@ class AppProvider extends ChangeNotifier {
     schedules = schedules.where((s) => s.sectionId != sectionId).toList();
     manualSlots.remove(sectionId);
 
-    // Remove assignments specific to this section (grade-wide ones remain).
     teachers = teachers.map((t) => t.copyWith(
       assignments: t.assignments
           .where((a) => a.sectionId != sectionId)
-          .toList(), sectionIds: [],
+          .toList(),
+      sectionIds: [],
     )).toList();
 
     await _storage.saveGrades(grades);
@@ -397,11 +491,10 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> deleteSubject(String id) async {
-    // Remove subject from teacher subjectIds.
     teachers = teachers.map((t) => t.copyWith(
       subjectIds: t.subjectIds.where((sid) => sid != id).toList(),
-      // Also remove assignments that reference this subject.
-      assignments: t.assignments.where((a) => a.subjectId != id).toList(), sectionIds: [                                                                                                                                ],
+      assignments: t.assignments.where((a) => a.subjectId != id).toList(),
+      sectionIds: [],
     )).toList();
 
     schedules = schedules
@@ -508,6 +601,25 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Borra absolutamente toda la información ingresada en la app:
+  /// niveles, grados, secciones, materias, maestros, horarios y slots manuales.
+  /// También limpia SharedPreferences por completo.
+  Future<void> clearAllData() async {
+    levels    = [];
+    grades    = [];
+    subjects  = [];
+    teachers  = [];
+    schedules = [];
+    manualSlots.clear();
+    filterLevelId   = null;
+    filterGradeId   = null;
+    filterSectionId = null;
+    filterTeacherId = null;
+    currentScreen   = AppScreen.dashboard;
+    await _storage.clearAll();
+    notifyListeners();
+  }
+
   // ─── Validation ──────────────────────────────
 
   List<String> validateSchedules() {
@@ -522,7 +634,17 @@ class AppProvider extends ChangeNotifier {
   /// Returns a structured list of teacher double-booking conflicts so the UI
   /// can display them interactively and let the user resolve each one.
   List<ConflictInfo> get conflictDetails {
-    // teacher-id → (day-period key → [sectionIds])
+    final Set<String> legitimateSharedKeys = {};
+    for (final subj in subjects) {
+      for (final cfg in subj.levelConfigs) {
+        for (final block in cfg.sharedBlocks) {
+          if (block.sectionIds.length < 2) continue;
+          final sorted = List<String>.from(block.sectionIds)..sort();
+          legitimateSharedKeys.add('${sorted.join(",")}|${subj.id}');
+        }
+      }
+    }
+
     final teacherSlots = <String, Map<String, List<String>>>{};
 
     for (final sched in schedules) {
@@ -544,12 +666,10 @@ class AppProvider extends ChangeNotifier {
         final sectionIds = slotEntry.value.toSet().toList();
         if (sectionIds.length <= 1) continue;
 
-        final parts     = slotEntry.key.split('|||');
-        final day       = parts[0];
-        final period    = int.tryParse(parts[1]) ?? -1;
+        final parts  = slotEntry.key.split('|||');
+        final day    = parts[0];
+        final period = int.tryParse(parts[1]) ?? -1;
 
-        // Shared blocks (same subject, same teacher, multiple sections) are
-        // intentional and must NOT be flagged as conflicts.
         final subjectIds = sectionIds.map((sId) {
           try {
             final sched = schedules.firstWhere((s) => s.sectionId == sId);
@@ -559,7 +679,12 @@ class AppProvider extends ChangeNotifier {
           }
         }).whereType<String>().toSet();
 
-        if (subjectIds.length <= 1) continue; // same subject = shared block ✓
+        if (subjectIds.length <= 1) {
+          final sortedSections = sectionIds.toList()..sort();
+          final key =
+              '${sortedSections.join(",")}|${subjectIds.firstOrNull ?? ""}';
+          if (legitimateSharedKeys.contains(key)) continue;
+        }
 
         final conflictSlots = sectionIds.map((sId) {
           Subject? subj;
@@ -569,9 +694,8 @@ class AppProvider extends ChangeNotifier {
             if (sid != null) subj = findSubject(sid);
           } catch (_) {}
 
-          // Build a human-readable label for the section
           final section = findSection(sId);
-          String label = sId;
+          String label  = sId;
           if (section != null) {
             final grade = findGrade(section.gradeId);
             label = grade != null
@@ -591,7 +715,6 @@ class AppProvider extends ChangeNotifier {
       }
     }
 
-    // Sort: unresolved conflicts first, then by teacher name
     result.sort((a, b) => a.teacher.fullName.compareTo(b.teacher.fullName));
     return result;
   }
@@ -606,13 +729,13 @@ class AppProvider extends ChangeNotifier {
     bool clearAll = false,
   }) {
     if (clearAll) {
-      filterLevelId = null;
-      filterGradeId = null;
+      filterLevelId   = null;
+      filterGradeId   = null;
       filterSectionId = null;
       filterTeacherId = null;
     } else {
-      filterLevelId = levelId;
-      filterGradeId = gradeId;
+      filterLevelId   = levelId;
+      filterGradeId   = gradeId;
       filterSectionId = sectionId;
       filterTeacherId = teacherId;
     }
