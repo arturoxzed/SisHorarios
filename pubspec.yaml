@@ -16,6 +16,7 @@ dependencies:
   printing: ^5.13.1
   google_fonts: ^6.2.1
   path_provider: ^2.1.4   # ← nuevo: guardar PDF en carpeta Descargas
+  file_picker: ^8.0.0     # ← nuevo: permitir al usuario elegir dónde guardar el PDF
 
 dev_dependencies:
   flutter_test:
