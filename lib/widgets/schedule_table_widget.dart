@@ -58,11 +58,11 @@ class ScheduleTableWidget extends StatelessWidget {
       try { return teachers.firstWhere((t) => t.id == id); } catch (_) { return null; }
     }
 
-    final cellW = compact ? 120.0 : 150.0;
-    final cellH = compact ? 72.0  : 88.0;
-    final timeW = compact ? 120.0 : 140.0;
+    final cellW = compact ? 96.0  : 118.0;
+    final cellH = compact ? 56.0  : 68.0;
+    final timeW = compact ? 96.0  : 110.0;
     // Break row is shorter — just enough to show the time range
-    final breakH = compact ? 34.0  : 38.0;
+    final breakH = compact ? 26.0  : 30.0;
 
     // Determine where the break row goes (after which session index).
     // -1 means no break; value >= sessions means break is after all rows.

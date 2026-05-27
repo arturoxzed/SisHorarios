@@ -645,8 +645,24 @@ class _TeacherView extends StatelessWidget {
             if (slot.teacherId != teacher.id) continue;
             final key = '${slot.day}-${slot.periodIndex}';
             // Build section label for this schedule entry.
-            final sec = provider.findSection(sched.sectionId);
-            final gr = sec != null ? provider.findGrade(sec.gradeId) : null;
+            // findSection already handles the grade-as-section fallback, but
+            // we need the Grade too for a full "Grado Sección" label.
+            Section? sec = provider.findSection(sched.sectionId);
+            Grade? gr;
+            if (sec != null) {
+              gr = provider.findGrade(sec.gradeId);
+            } else {
+              // sectionId == gradeId (grade without explicit sections)
+              gr = provider.findGrade(sched.sectionId);
+              if (gr != null) {
+                sec = Section(
+                  id: gr.id,
+                  name: gr.name,
+                  gradeId: gr.id,
+                  levelId: gr.levelId,
+                );
+              }
+            }
             final label = sec != null
                 ? (gr != null ? '${gr.name} ${sec.name}' : sec.name)
                 : null;

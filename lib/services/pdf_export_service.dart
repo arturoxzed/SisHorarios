@@ -20,7 +20,7 @@ class PdfExportService {
     required List<Teacher> teachers,
     String? suggestedName,
   }) async {
-    final pdf  = pw.Document();
+    final pdf      = pw.Document();
     final font     = await PdfGoogleFonts.interRegular();
     final fontBold = await PdfGoogleFonts.interBold();
     final config   = grade.config;
@@ -98,15 +98,33 @@ class PdfExportService {
               cellBuilder: (day, p) {
                 String? subjectId;
                 final groupLabels = <String>[];
+                final seenSectionIds = <String>{};
                 for (final sched in allSchedules) {
                   final slot = sched.getSlot(day, p);
                   if (slot == null || slot.teacherId != teacher.id) continue;
+                  // Deduplicate by sectionId so the same group never appears twice.
+                  if (!seenSectionIds.add(sched.sectionId)) continue;
                   subjectId ??= slot.subjectId;
-                  final sec =
+                  // Try finding a real Section first; fall back to treating
+                  // sectionId as a gradeId (grades without explicit sections).
+                  Section? sec =
                       sections.where((s) => s.id == sched.sectionId).firstOrNull;
+                  Grade? gr;
                   if (sec != null) {
-                    final gr =
-                        grades.where((g) => g.id == sec.gradeId).firstOrNull;
+                    gr = grades.where((g) => g.id == sec?.gradeId).firstOrNull;
+                  } else {
+                    // sectionId == gradeId case (no explicit sections).
+                    gr = grades.where((g) => g.id == sched.sectionId).firstOrNull;
+                    if (gr != null) {
+                      sec = Section(
+                        id: gr.id,
+                        name: gr.name,
+                        gradeId: gr.id,
+                        levelId: gr.levelId,
+                      );
+                    }
+                  }
+                  if (sec != null) {
                     final label =
                         gr != null ? '${gr.name} ${sec.name}' : sec.name;
                     if (!groupLabels.contains(label)) groupLabels.add(label);
@@ -115,7 +133,7 @@ class PdfExportService {
                 if (subjectId == null) return null;
                 return _CellData(
                   top:    _subjectName(subjects, subjectId),
-                  bottom: groupLabels.isNotEmpty ? groupLabels.join(' / ') : '?',
+                  bottom: groupLabels.isNotEmpty ? groupLabels.join(' / ') : '',
                   color:  _subjectPdfColor(subjects, subjectId),
                 );
               },
@@ -142,60 +160,112 @@ class PdfExportService {
     required pw.Font font,
     required pw.Font fontBold,
   }) {
-    final labels = config.sessionLabels;
+    final labels         = config.sessionLabels;
+    final breakAfter     = config.breakAfterSession; // -1 si no hay receso
+    final hasBreak       = config.hasBreak;
+    final breakLabel     = hasBreak
+        ? 'Receso  ${config.breakStart} – ${config.breakEnd}'
+        : 'Receso';
+
+    // Construimos las filas manualmente para poder intercalar el receso.
+    final rows = <pw.TableRow>[
+      // ── Encabezado ────────────────────────────────────────────────────────
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+        children: [
+          _pdfCell('Hora / Sesión', fontBold, isHeader: true),
+          ...dayHeaders.map((d) => _pdfCell(d, fontBold, isHeader: true)),
+        ],
+      ),
+    ];
+
+    for (int p = 0; p < config.sessionsPerDay; p++) {
+      // ── Insertar fila de receso justo DESPUÉS de breakAfterSession ────────
+      if (hasBreak && p == breakAfter + 1) {
+        rows.add(
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.amber50),
+            children: [
+              _pdfBreakCell(breakLabel, fontBold),
+              // Celdas vacías para cada día, unificadas visualmente
+              ...dayHeaders.map((_) => _pdfBreakCell('', font)),
+            ],
+          ),
+        );
+      }
+
+      // ── Fila normal de sesión ─────────────────────────────────────────────
+      rows.add(
+        pw.TableRow(
+          children: [
+            _pdfCell(
+              '$labelPrefix${p + 1}  ${labels[p]}',
+              fontBold,
+              small: true,
+            ),
+            ...dayHeaders.map((day) {
+              final data = cellBuilder(day, p);
+              if (data == null) return _pdfCell('—', font, small: true);
+              return pw.Container(
+                color: data.color,
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 5, vertical: 10),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Text(
+                      data.top,
+                      style: pw.TextStyle(
+                          font: fontBold,
+                          fontSize: 7,
+                          color: PdfColors.white),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      data.bottom,
+                      style: pw.TextStyle(font: font, fontSize: 6),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      );
+    }
 
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey400),
-      children: [
-        pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-          children: [
-            _pdfCell('Hora / Sesión', fontBold, isHeader: true),
-            ...dayHeaders.map((d) => _pdfCell(d, fontBold, isHeader: true)),
-          ],
-        ),
-        ...List.generate(config.sessionsPerDay, (p) {
-          return pw.TableRow(
-            children: [
-              _pdfCell('$labelPrefix${p + 1}  ${labels[p]}', fontBold,
-                  small: true),
-              ...dayHeaders.map((day) {
-                final data = cellBuilder(day, p);
-                if (data == null) return _pdfCell('—', font, small: true);
-                return pw.Container(
-                  color: data.color,
-                  padding: const pw.EdgeInsets.all(4),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(data.top,
-                          style: pw.TextStyle(
-                              font: fontBold,
-                              fontSize: 7,
-                              color: PdfColors.white)),
-                      pw.Text(data.bottom,
-                          style: pw.TextStyle(font: font, fontSize: 6)),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          );
-        }),
-      ],
+      children: rows,
     );
   }
 
   pw.Widget _pdfCell(String text, pw.Font font,
       {bool isHeader = false, bool small = false}) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 10),
       child: pw.Text(
         text,
         style: pw.TextStyle(
           font: font,
           fontSize: small ? 8 : 9,
           color: isHeader ? PdfColors.white : PdfColors.black,
+        ),
+      ),
+    );
+  }
+
+  /// Celda especial para la fila de receso (fondo ámbar claro, texto naranja).
+  pw.Widget _pdfBreakCell(String text, pw.Font font) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          font: font,
+          fontSize: 8,
+          color: PdfColors.orange900,
         ),
       ),
     );
