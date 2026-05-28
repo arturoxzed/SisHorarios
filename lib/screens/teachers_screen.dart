@@ -268,7 +268,11 @@ class _TeacherCard extends StatelessWidget {
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
-                      children: teacher.assignments.map((a) {
+                      // Deduplicate before rendering — legacy migration can
+                  // produce repeated (subjectId, gradeId, sectionId) entries.
+                  // TeacherSubjectAssignment implements == / hashCode so
+                  // toSet() is sufficient.
+                  children: teacher.assignments.toSet().toList().map((a) {
                         final subj  = provider.findSubject(a.subjectId);
                         final grade = provider.findGrade(a.gradeId);
                         final level = grade != null ? provider.findLevel(grade.levelId) : null;

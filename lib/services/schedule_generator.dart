@@ -36,6 +36,7 @@ class _TimeSlot {
   String toString() => '$day-P$period';
 }
 
+// ignore: unused_element
 class _Requirement {
   final String sectionId;
   final String subjectId;
@@ -50,6 +51,7 @@ class _Requirement {
   });
 }
 
+// ignore: unused_element
 class _SharedRequirement {
   final List<String> sectionIds;
   final String subjectId;

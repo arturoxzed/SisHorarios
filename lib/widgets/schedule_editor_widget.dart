@@ -65,6 +65,7 @@ class _ScheduleEditorWidgetState extends State<ScheduleEditorWidget> {
   late Map<String, List<ScheduleSlot>> _editableSlots;
 
   // Sección actualmente seleccionada en el tab
+  // ignore: unused_field
   late String _selectedSectionId;
 
   // Mensajes de validación más recientes

@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/schedule_generator.dart';
 import '../theme/app_theme.dart';
-import 'conflict_resolution_screen.dart';
 
 
 class SchedulesScreen extends StatefulWidget {

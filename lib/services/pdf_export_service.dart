@@ -125,8 +125,11 @@ class PdfExportService {
                     }
                   }
                   if (sec != null) {
-                    final label =
-                        gr != null ? '${gr.name} ${sec.name}' : sec.name;
+                    // When sec was synthesised from gr (no explicit sections),
+                    // sec.name == gr.name → avoid "GradoX GradoX" doubling.
+                    final label = (gr != null && sec.name != gr.name)
+                        ? '${gr.name} ${sec.name}'
+                        : (gr?.name ?? sec.name);
                     if (!groupLabels.contains(label)) groupLabels.add(label);
                   }
                 }

@@ -16,7 +16,6 @@ class VisualizationScreen extends StatefulWidget {
 class _VisualizationScreenState extends State<VisualizationScreen>
     with SingleTickerProviderStateMixin {
   final _pdfService = PdfExportService();
-  bool _viewByTeacher = false;
   String? _selectedTeacherId;
   bool _exporting = false;
   late final TabController _tabController;

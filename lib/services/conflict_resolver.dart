@@ -641,7 +641,6 @@ class ConflictResolverService {
 
     // Todos los slots posibles del grado
     final allSlots = _allTimeSlots(grade);
-    final totalSlotsInWeek = allSlots.length;
 
     // Clasificar maestros
     final freeTeachers  = <TeacherFreeTimeInfo>[];

@@ -23,7 +23,7 @@ class _LevelsScreenState extends State<LevelsScreen> {
       children: [
         // ── Left: Levels panel ────────────────────────────────────────────
         SizedBox(
-          width: 210,
+          width: 260,
           child: Card(
             margin: const EdgeInsets.all(16),
             child: Column(
@@ -614,6 +614,7 @@ class _ConfigChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool highlight;
+  // ignore: unused_element_parameter
   const _ConfigChip({required this.icon, required this.label, this.highlight = false});
 
   @override

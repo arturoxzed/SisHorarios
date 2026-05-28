@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/conflict_resolver.dart';
 import '../theme/app_theme.dart'; 
@@ -274,6 +273,7 @@ class _CountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
+        // ignore: deprecated_member_use
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.3)),
@@ -519,7 +519,7 @@ class _ConflictListItem extends StatelessWidget {
                     color: badgeColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(badge!,
+                  child: Text(badge,
                       style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,

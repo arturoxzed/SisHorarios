@@ -5,7 +5,6 @@ import '../services/storage_service.dart';
 import '../services/schedule_generator.dart';
 import '../services/import_export_service.dart';
 import '../theme/app_theme.dart';
-import '../services/conflict_resolver.dart';
 
 export '../services/import_export_service.dart'
     show

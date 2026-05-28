@@ -374,7 +374,7 @@ class _FeedbackMessage {
 
 class _FeedbackBanner extends StatelessWidget {
   final _FeedbackMessage message;
-  const _FeedbackBanner({required this.message, super.key});
+  const _FeedbackBanner({required this.message});
 
   @override
   Widget build(BuildContext context) {
