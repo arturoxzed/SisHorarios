@@ -8,8 +8,13 @@ import '../theme/app_theme.dart';
 import '../services/conflict_resolver.dart';
 
 export '../services/import_export_service.dart'
-    show ImportExportService, SchoolConfig, ExportResult, ImportResult,
-        ImportExportException, ImportExportErrorKind;
+    show
+        ImportExportService,
+        SchoolConfig,
+        ExportResult,
+        ImportResult,
+        ImportExportException,
+        ImportExportErrorKind;
 
 enum AppScreen {
   dashboard,
@@ -82,10 +87,10 @@ class AppProvider extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
     try {
-      levels    = await _storage.loadLevels();
-      grades    = await _storage.loadGrades();
-      subjects  = await _storage.loadSubjects();
-      teachers  = await _storage.loadTeachers();
+      levels = await _storage.loadLevels();
+      grades = await _storage.loadGrades();
+      subjects = await _storage.loadSubjects();
+      teachers = await _storage.loadTeachers();
       schedules = await _storage.loadSchedules();
 
       // Migrate legacy teachers that have sectionIds but no assignments.
@@ -116,10 +121,10 @@ class AppProvider extends ChangeNotifier {
     String suggestedName = 'school_config',
   }) async {
     final config = SchoolConfig(
-      levels:    levels,
-      grades:    grades,
-      subjects:  subjects,
-      teachers:  teachers,
+      levels: levels,
+      grades: grades,
+      subjects: subjects,
+      teachers: teachers,
       schedules: includeSchedules ? schedules : const [],
     );
     return _importExport.exportConfig(config, suggestedName: suggestedName);
@@ -143,16 +148,16 @@ class AppProvider extends ChangeNotifier {
     try {
       final cfg = result.config!;
 
-      levels    = cfg.levels;
-      grades    = cfg.grades;
-      subjects  = cfg.subjects;
-      teachers  = _migrateLegacyTeachers(cfg.teachers);
+      levels = cfg.levels;
+      grades = cfg.grades;
+      subjects = cfg.subjects;
+      teachers = _migrateLegacyTeachers(cfg.teachers);
       schedules = cfg.schedules;
       manualSlots.clear();
 
       // Reset any active filters so the UI reflects the new data cleanly.
-      filterLevelId   = null;
-      filterGradeId   = null;
+      filterLevelId = null;
+      filterGradeId = null;
       filterSectionId = null;
       filterTeacherId = null;
 
@@ -290,23 +295,43 @@ class AppProvider extends ChangeNotifier {
   }
 
   Subject? findSubject(String id) {
-    try { return subjects.firstWhere((s) => s.id == id); } catch (_) { return null; }
+    try {
+      return subjects.firstWhere((s) => s.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   Teacher? findTeacher(String id) {
-    try { return teachers.firstWhere((t) => t.id == id); } catch (_) { return null; }
+    try {
+      return teachers.firstWhere((t) => t.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   EducationalLevel? findLevel(String id) {
-    try { return levels.firstWhere((l) => l.id == id); } catch (_) { return null; }
+    try {
+      return levels.firstWhere((l) => l.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   Grade? findGrade(String id) {
-    try { return grades.firstWhere((g) => g.id == id); } catch (_) { return null; }
+    try {
+      return grades.firstWhere((g) => g.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   SectionSchedule? scheduleForSection(String sectionId) {
-    try { return schedules.firstWhere((s) => s.sectionId == sectionId); } catch (_) { return null; }
+    try {
+      return schedules.firstWhere((s) => s.sectionId == sectionId);
+    } catch (_) {
+      return null;
+    }
   }
 
   int get totalStudentGroups => allSchedulableUnits.length;
@@ -339,9 +364,8 @@ class AppProvider extends ChangeNotifier {
       return g.copyWith(
         config: g.config.copyWith(
           fridayEarlyDismissal: level.scheduledDismissal,
-          fridayLastSession: level.scheduledDismissal
-              ? level.dismissalSessionIndex
-              : -1,
+          fridayLastSession:
+              level.scheduledDismissal ? level.dismissalSessionIndex : -1,
         ),
       );
     }).toList();
@@ -360,7 +384,8 @@ class AppProvider extends ChangeNotifier {
     grades = grades.where((g) => g.levelId != id).toList();
     subjects = subjects
         .map((s) => s.copyWith(
-              levelConfigs: s.levelConfigs.where((c) => c.levelId != id).toList(),
+              levelConfigs:
+                  s.levelConfigs.where((c) => c.levelId != id).toList(),
             ))
         .where((s) => s.levelIds.isNotEmpty)
         .toList();
@@ -371,14 +396,17 @@ class AppProvider extends ChangeNotifier {
         .toList();
     for (final sid in {...sectionIds, ...gradeIds}) manualSlots.remove(sid);
 
-    teachers = teachers.map((t) => t.copyWith(
-      assignments: t.assignments
-          .where((a) =>
-              !gradeIds.contains(a.gradeId) &&
-              (a.sectionId == null || !sectionIds.contains(a.sectionId)))
-          .toList(),
-      sectionIds: [],
-    )).toList();
+    teachers = teachers
+        .map((t) => t.copyWith(
+              assignments: t.assignments
+                  .where((a) =>
+                      !gradeIds.contains(a.gradeId) &&
+                      (a.sectionId == null ||
+                          !sectionIds.contains(a.sectionId)))
+                  .toList(),
+              sectionIds: [],
+            ))
+        .toList();
 
     levels = levels.where((l) => l.id != id).toList();
 
@@ -416,14 +444,17 @@ class AppProvider extends ChangeNotifier {
         .toList();
     for (final sid in {...sectionIds, id}) manualSlots.remove(sid);
 
-    teachers = teachers.map((t) => t.copyWith(
-      assignments: t.assignments
-          .where((a) =>
-              a.gradeId != id &&
-              (a.sectionId == null || !sectionIds.contains(a.sectionId)))
-          .toList(),
-      sectionIds: [],
-    )).toList();
+    teachers = teachers
+        .map((t) => t.copyWith(
+              assignments: t.assignments
+                  .where((a) =>
+                      a.gradeId != id &&
+                      (a.sectionId == null ||
+                          !sectionIds.contains(a.sectionId)))
+                  .toList(),
+              sectionIds: [],
+            ))
+        .toList();
 
     grades = grades.where((g) => g.id != id).toList();
     await _storage.saveGrades(grades);
@@ -461,12 +492,13 @@ class AppProvider extends ChangeNotifier {
     schedules = schedules.where((s) => s.sectionId != sectionId).toList();
     manualSlots.remove(sectionId);
 
-    teachers = teachers.map((t) => t.copyWith(
-      assignments: t.assignments
-          .where((a) => a.sectionId != sectionId)
-          .toList(),
-      sectionIds: [],
-    )).toList();
+    teachers = teachers
+        .map((t) => t.copyWith(
+              assignments:
+                  t.assignments.where((a) => a.sectionId != sectionId).toList(),
+              sectionIds: [],
+            ))
+        .toList();
 
     await _storage.saveGrades(grades);
     await _storage.saveSchedules(schedules);
@@ -491,11 +523,14 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> deleteSubject(String id) async {
-    teachers = teachers.map((t) => t.copyWith(
-      subjectIds: t.subjectIds.where((sid) => sid != id).toList(),
-      assignments: t.assignments.where((a) => a.subjectId != id).toList(),
-      sectionIds: [],
-    )).toList();
+    teachers = teachers
+        .map((t) => t.copyWith(
+              subjectIds: t.subjectIds.where((sid) => sid != id).toList(),
+              assignments:
+                  t.assignments.where((a) => a.subjectId != id).toList(),
+              sectionIds: [],
+            ))
+        .toList();
 
     schedules = schedules
         .map((s) => s.copyWith(
@@ -605,17 +640,17 @@ class AppProvider extends ChangeNotifier {
   /// niveles, grados, secciones, materias, maestros, horarios y slots manuales.
   /// También limpia SharedPreferences por completo.
   Future<void> clearAllData() async {
-    levels    = [];
-    grades    = [];
-    subjects  = [];
-    teachers  = [];
+    levels = [];
+    grades = [];
+    subjects = [];
+    teachers = [];
     schedules = [];
     manualSlots.clear();
-    filterLevelId   = null;
-    filterGradeId   = null;
+    filterLevelId = null;
+    filterGradeId = null;
     filterSectionId = null;
     filterTeacherId = null;
-    currentScreen   = AppScreen.dashboard;
+    currentScreen = AppScreen.dashboard;
     await _storage.clearAll();
     notifyListeners();
   }
@@ -666,18 +701,21 @@ class AppProvider extends ChangeNotifier {
         final sectionIds = slotEntry.value.toSet().toList();
         if (sectionIds.length <= 1) continue;
 
-        final parts  = slotEntry.key.split('|||');
-        final day    = parts[0];
+        final parts = slotEntry.key.split('|||');
+        final day = parts[0];
         final period = int.tryParse(parts[1]) ?? -1;
 
-        final subjectIds = sectionIds.map((sId) {
-          try {
-            final sched = schedules.firstWhere((s) => s.sectionId == sId);
-            return sched.getSlot(day, period)?.subjectId;
-          } catch (_) {
-            return null;
-          }
-        }).whereType<String>().toSet();
+        final subjectIds = sectionIds
+            .map((sId) {
+              try {
+                final sched = schedules.firstWhere((s) => s.sectionId == sId);
+                return sched.getSlot(day, period)?.subjectId;
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<String>()
+            .toSet();
 
         if (subjectIds.length <= 1) {
           final sortedSections = sectionIds.toList()..sort();
@@ -690,12 +728,12 @@ class AppProvider extends ChangeNotifier {
           Subject? subj;
           try {
             final sched = schedules.firstWhere((s) => s.sectionId == sId);
-            final sid   = sched.getSlot(day, period)?.subjectId;
+            final sid = sched.getSlot(day, period)?.subjectId;
             if (sid != null) subj = findSubject(sid);
           } catch (_) {}
 
           final section = findSection(sId);
-          String label  = sId;
+          String label = sId;
           if (section != null) {
             final grade = findGrade(section.gradeId);
             label = grade != null
@@ -729,13 +767,13 @@ class AppProvider extends ChangeNotifier {
     bool clearAll = false,
   }) {
     if (clearAll) {
-      filterLevelId   = null;
-      filterGradeId   = null;
+      filterLevelId = null;
+      filterGradeId = null;
       filterSectionId = null;
       filterTeacherId = null;
     } else {
-      filterLevelId   = levelId;
-      filterGradeId   = gradeId;
+      filterLevelId = levelId;
+      filterGradeId = gradeId;
       filterSectionId = sectionId;
       filterTeacherId = teacherId;
     }

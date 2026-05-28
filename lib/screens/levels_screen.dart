@@ -96,12 +96,15 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                             size: 11,
                                             color: Color(0xFF2563EB)),
                                         const SizedBox(width: 3),
-                                        Text(
-                                          'Salida: sesión ${level.dismissalSessionIndex + 1}',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: Color(0xFF2563EB),
-                                            fontWeight: FontWeight.w600,
+                                        Flexible(
+                                          child: Text(
+                                            'Salida: sesión ${level.dismissalSessionIndex + 1}',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              color: Color(0xFF2563EB),
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -230,39 +233,54 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                       : '${grade.sections.length} grupo(s)',
                                   style: const TextStyle(fontSize: 11),
                                 ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit,
-                                          size: 16),
-                                      onPressed: () => showDialog(
-                                        context: context,
-                                        builder: (_) => GradeDialog(
-                                            levelId: _selectedLevelId!,
-                                            existing: grade),
+                                trailing: SizedBox(
+                                  width: 72,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit,
+                                            size: 16),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () => showDialog(
+                                          context: context,
+                                          builder: (_) => GradeDialog(
+                                              levelId: _selectedLevelId!,
+                                              existing: grade),
+                                        ),
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete,
-                                          size: 16,
-                                          color: AppTheme.error),
-                                      onPressed: () async {
-                                        final ok = await _confirmDelete(
-                                            context,
-                                            'Eliminar Grado',
-                                            '¿Eliminar "${grade.name}" y todos sus grupos?');
-                                        if (ok && context.mounted) {
-                                          provider.deleteGrade(grade.id);
-                                          if (_selectedGradeId ==
-                                              grade.id) {
-                                            setState(() =>
-                                                _selectedGradeId = null);
+                                      IconButton(
+                                        icon: const Icon(Icons.delete,
+                                            size: 16,
+                                            color: AppTheme.error),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () async {
+                                          final ok = await _confirmDelete(
+                                              context,
+                                              'Eliminar Grado',
+                                              '¿Eliminar "${grade.name}" y todos sus grupos?');
+                                          if (ok && context.mounted) {
+                                            provider.deleteGrade(grade.id);
+                                            if (_selectedGradeId ==
+                                                grade.id) {
+                                              setState(() =>
+                                                  _selectedGradeId = null);
+                                            }
                                           }
-                                        }
-                                      },
-                                    ),
-                                  ],
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ),
                                 onTap: () => setState(
                                     () => _selectedGradeId = grade.id),

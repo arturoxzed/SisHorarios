@@ -15,9 +15,15 @@ class AppSidebar extends StatelessWidget {
     return Container(
       width: 230,
       color: AppTheme.sidebarBg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: MediaQuery.of(context).size.height,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
           // Logo / Header
           Container(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -115,7 +121,7 @@ class AppSidebar extends StatelessWidget {
             onTap: () => provider.navigate(AppScreen.conflictResolution),
           ),
 
-          const Spacer(),
+          const SizedBox(height: 16),
 
           // ── Stats footer ──────────────────────────────────────────────────
           Container(
@@ -160,7 +166,9 @@ class AppSidebar extends StatelessWidget {
               onTap: () => _ClearDataDialog.show(context),
             ),
           ),
-        ],
+          ],
+        ),
+      ),
       ),
     );
   }
@@ -274,12 +282,15 @@ class _SidebarActionButton extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: baseColor.withOpacity(0.75)),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: baseColor.withOpacity(0.75),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: baseColor.withOpacity(0.75),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
