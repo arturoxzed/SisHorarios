@@ -423,6 +423,10 @@ class _GradeDialogState extends State<GradeDialog> {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) return;
     final provider = context.read<AppProvider>();
+    debugPrint('[GRADE DIALOG _save] name=$name '
+        'fridayEarlyDismissal=${_config.fridayEarlyDismissal} '
+        'fridayLastSession=${_config.fridayLastSession} '
+        'sessionsPerDay=${_config.sessionsPerDay}');
     if (widget.existing == null) {
       provider.addGrade(Grade(
         id: _uuid.v4(),

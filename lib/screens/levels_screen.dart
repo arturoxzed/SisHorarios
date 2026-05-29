@@ -403,6 +403,13 @@ class _GradeDetailPanel extends StatelessWidget {
                                   icon: Icons.free_breakfast_rounded,
                                   label:
                                       'Receso ${config.breakStart}–${config.breakEnd}'),
+                            if (config.fridayEarlyDismissal &&
+                                config.fridayLastSession >= 0)
+                              _ConfigChip(
+                                  icon: Icons.exit_to_app_rounded,
+                                  label:
+                                      'Viernes: hasta sesión ${config.fridayLastSession + 1}',
+                                  highlight: true),
                           ],
                         ),
                       ],

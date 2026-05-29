@@ -170,6 +170,17 @@ class PdfExportService {
         ? 'Receso  ${config.breakStart} – ${config.breakEnd}'
         : 'Receso';
 
+    // Pre-calcular cuántas sesiones tiene cada día (respeta salida temprana
+    // los viernes cuando fridayEarlyDismissal está activo).
+    final sessionsPerDay = {
+      for (final d in dayHeaders) d: config.sessionsForDay(d),
+    };
+
+    // El número máximo de filas lo dicta el día con más sesiones
+    // (normalmente todos los días salvo el viernes tienen el mismo valor).
+    final maxSessions = sessionsPerDay.values
+        .fold(0, (prev, v) => v > prev ? v : prev);
+
     // Construimos las filas manualmente para poder intercalar el receso.
     final rows = <pw.TableRow>[
       // ── Encabezado ────────────────────────────────────────────────────────
@@ -182,7 +193,7 @@ class PdfExportService {
       ),
     ];
 
-    for (int p = 0; p < config.sessionsPerDay; p++) {
+    for (int p = 0; p < maxSessions; p++) {
       // ── Insertar fila de receso justo DESPUÉS de breakAfterSession ────────
       if (hasBreak && p == breakAfter + 1) {
         rows.add(
@@ -190,8 +201,18 @@ class PdfExportService {
             decoration: const pw.BoxDecoration(color: PdfColors.amber50),
             children: [
               _pdfBreakCell(breakLabel, fontBold),
-              // Celdas vacías para cada día, unificadas visualmente
-              ...dayHeaders.map((_) => _pdfBreakCell('', font)),
+              // Por cada día: Receso si el día llega al punto del receso;
+              // celda gris deshabilitada si el día terminó antes del receso
+              // (ej. viernes con salida temprana cuya última sesión ≤ breakAfter).
+              ...dayHeaders.map((day) {
+                final dayLimit = sessionsPerDay[day] ?? config.sessionsPerDay;
+                // breakAfter es el índice de la última sesión ANTES del receso.
+                // Si el día termina en esa sesión o antes, ya no llega al receso.
+                if (dayLimit <= breakAfter) {
+                  return _pdfEarlyDismissalCell(font);
+                }
+                return _pdfBreakCell('', font);
+              }),
             ],
           ),
         );
@@ -207,6 +228,12 @@ class PdfExportService {
               small: true,
             ),
             ...dayHeaders.map((day) {
+              // Si este día termina antes de llegar a la sesión p, mostrar
+              // celda gris con guión (salida temprana).
+              final dayLimit = sessionsPerDay[day] ?? config.sessionsPerDay;
+              if (p >= dayLimit) {
+                return _pdfEarlyDismissalCell(font);
+              }
               final data = cellBuilder(day, p);
               if (data == null) return _pdfCell('—', font, small: true);
               return pw.Container(
@@ -269,6 +296,22 @@ class PdfExportService {
           font: font,
           fontSize: 8,
           color: PdfColors.orange900,
+        ),
+      ),
+    );
+  }
+
+  /// Celda para sesiones fuera del horario por salida temprana.
+  /// Se muestra en días donde la sesión no existe (ej. viernes con salida
+  /// temprana). Fondo gris claro con un guión centrado.
+  pw.Widget _pdfEarlyDismissalCell(pw.Font font) {
+    return pw.Container(
+      color: PdfColors.grey200,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      child: pw.Center(
+        child: pw.Text(
+          '–',
+          style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey500),
         ),
       ),
     );

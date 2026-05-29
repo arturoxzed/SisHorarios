@@ -16,6 +16,11 @@ class ScheduleTableWidget extends StatelessWidget {
   final List<Teacher> teachers;
   final bool compact;
 
+  /// When true the widget uses the same cell dimensions as the student view
+  /// even though an extra group-label line is rendered inside each cell.
+  /// Set this to true whenever [slotSectionLabel] is provided (teacher view).
+  final bool teacherView;
+
   /// Optional callback that returns a group/section label for a given
   /// (day, periodIndex) slot.  Used by the teacher view to show which group
   /// the teacher has in each cell.
@@ -31,6 +36,7 @@ class ScheduleTableWidget extends StatelessWidget {
     required this.subjects,
     required this.teachers,
     this.compact = false,
+    this.teacherView = false,
     this.slotSectionLabel,
     this.onSlotTap,
   });
@@ -58,11 +64,14 @@ class ScheduleTableWidget extends StatelessWidget {
       try { return teachers.firstWhere((t) => t.id == id); } catch (_) { return null; }
     }
 
-    final cellW = compact ? 96.0  : 118.0;
-    final cellH = compact ? 56.0  : 68.0;
-    final timeW = compact ? 96.0  : 110.0;
+    // Teacher view uses same base dimensions as student view + extra height for group label.
+    final bool _isCompact = compact && !teacherView;
+    final cellW = _isCompact ? 96.0  : 130.0;
+    // ORIGINAL: final cellW = compact ? 96.0 : 118.0;
+    final cellH = _isCompact ? 56.0  : (teacherView ? 80.0 : 68.0);
+    final timeW = _isCompact ? 96.0  : 118.0;
     // Break row is shorter — just enough to show the time range
-    final breakH = compact ? 26.0  : 30.0;
+    final breakH = _isCompact ? 26.0  : 30.0;
 
     // Determine where the break row goes (after which session index).
     // -1 means no break; value >= sessions means break is after all rows.
@@ -99,6 +108,10 @@ class ScheduleTableWidget extends StatelessWidget {
               // ── Break row ──────────────────────────────────────────────
               if (row == 'break') {
                 final label = '${config.breakStart} – ${config.breakEnd}';
+                // The break row only makes sense for days that actually reach
+                // the break position.  For days that ended before the break
+                // (e.g. Friday early-dismissal), we render a _DisabledCell
+                // with the same height so the grid stays aligned.
                 return Row(
                   children: [
                     // Time label
@@ -117,9 +130,6 @@ class ScheduleTableWidget extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Row(
                         children: [
-                          /*const Icon(Icons.free_breakfast_rounded,
-                              size: 12, color: Color(0xFFD97706)),
-                          const SizedBox(width: 4),*/
                           Flexible(
                             child: Text(
                               'RECESO  $label',
@@ -133,22 +143,40 @@ class ScheduleTableWidget extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // One break cell per day
-                    ...days.map((_) => Container(
+                    // One cell per day: Receso if the day still has sessions
+                    // at the break position; _DisabledCell otherwise.
+                    ...days.map((day) {
+                      // breakAfter is the last session index before the break.
+                      // A day whose session count is <= breakAfter has already
+                      // ended before the break, so mark it as disabled.
+                      final dayLimit = config.sessionsForDay(day);
+                      final dayEnded = dayLimit <= breakAfter;
+                      if (dayEnded) {
+                        return Container(
                           width: cellW,
                           height: breakH,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF7ED),
-                            border: Border.all(color: const Color(0xFFFED7AA)),
+                            color: const Color(0xFFF1F5F9),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                          child: const Center(
-                            child: Text('Receso',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFFD97706),
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                        )),
+                        );
+                      }
+                      return Container(
+                        width: cellW,
+                        height: breakH,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          border: Border.all(color: const Color(0xFFFED7AA)),
+                        ),
+                        child: const Center(
+                          child: Text('Receso',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: Color(0xFFD97706),
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      );
+                    }),
                   ],
                 );
               }
@@ -219,6 +247,7 @@ class ScheduleTableWidget extends StatelessWidget {
                             width: cellW,
                             height: cellH,
                             compact: compact,
+                            teacherView: teacherView,
                           );
 
                     if (onSlotTap == null) return cellWidget;
@@ -324,6 +353,9 @@ class _SubjectCell extends StatelessWidget {
   final double width;
   final double height;
   final bool compact;
+  /// When true, fonts and spacing match the non-compact student view so both
+  /// schedules look identical in size and density.
+  final bool teacherView;
 
   const _SubjectCell({
     required this.subject,
@@ -332,6 +364,7 @@ class _SubjectCell extends StatelessWidget {
     required this.width,
     required this.height,
     required this.compact,
+    this.teacherView = false,
   });
 
   @override
@@ -339,56 +372,59 @@ class _SubjectCell extends StatelessWidget {
     final color     = subject?.color ?? const Color(0xFF94A3B8);
     final textColor = _contrastColor(color);
 
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: color.withOpacity(0.7)),
-      ),
-      padding: const EdgeInsets.all(6),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            subject?.name ?? 'Sin materia',
-            style: TextStyle(
-              color: textColor,
-              fontWeight: FontWeight.w700,
-              fontSize: compact ? 10 : 11,
-            ),
-            maxLines: compact ? 2 : 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-          // Teacher name
-          if (teacher != null) ...[
-            const SizedBox(height: 2),
+    return ClipRect(
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: color.withOpacity(0.7)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              teacher!.fullName,
+              subject?.name ?? 'Sin materia',
               style: TextStyle(
-                color: textColor.withOpacity(0.85),
-                fontSize: compact ? 8 : 9,
+                color: textColor,
+                fontWeight: FontWeight.w700,
+                fontSize: (compact && !teacherView) ? 10 : 11,
               ),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
-          // Group label (shown in teacher view)
-          if (groupLabel != null) ...[
-            const SizedBox(height: 1),
-            Text(
-              groupLabel!,
-              style: TextStyle(
-                color: textColor.withOpacity(0.75),
-                fontSize: compact ? 7 : 8,
-                fontStyle: FontStyle.italic,
+            // Teacher name — hidden in teacher view (redundant); kept in student view
+            if (teacher != null && !teacherView) ...[
+              const SizedBox(height: 2),
+              Text(
+                teacher!.fullName,
+                style: TextStyle(
+                  color: textColor.withOpacity(0.85),
+                  fontSize: (compact && !teacherView) ? 8 : 9,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
+            // Group label (shown in teacher view)
+            if (groupLabel != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                groupLabel!,
+                style: TextStyle(
+                  color: textColor.withOpacity(0.85),
+                  fontSize: (compact && !teacherView) ? 7 : 9,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

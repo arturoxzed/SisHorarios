@@ -404,11 +404,8 @@ class GradeConfig {
   /// On Fridays (when early dismissal is enabled), this is limited to
   /// [fridayLastSession] + 1.  All other days return [sessionsPerDay].
   int sessionsForDay(String day) {
-    if (fridayEarlyDismissal &&
-        day == 'Viernes' &&
-        fridayLastSession >= 0 &&
-        fridayLastSession < sessionsPerDay) {
-      return fridayLastSession + 1;
+    if (fridayEarlyDismissal && day == 'Viernes' && fridayLastSession >= 0) {
+      return (fridayLastSession + 1).clamp(1, sessionsPerDay);
     }
     return sessionsPerDay;
   }

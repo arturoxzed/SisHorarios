@@ -663,8 +663,10 @@ class _TeacherView extends StatelessWidget {
               }
             }
             final label = sec != null
-                ? (gr != null ? '${gr.name} ${sec.name}' : sec.name)
-                : null;
+            ? (gr != null && gr.name != sec.name
+            ? '${gr.name} ${sec.name}'
+            : sec.name)
+            : null;
             if (label != null) {
               slotSectionLabels.putIfAbsent(key, () => []);
               seenSectionPerKey.putIfAbsent(key, () => {});
@@ -685,12 +687,52 @@ class _TeacherView extends StatelessWidget {
           for (final e in slotSectionLabels.entries) e.key: e.value.join(' / '),
         };
 
+        // Resolver el Grade desde los propios slots del maestro.
+        // Usamos el primer slot para encontrar la sección y su grado real,
+        // lo que garantiza que la config (sessionsPerDay, fridayEarlyDismissal,
+        // etc.) coincide con el grado que el maestro realmente imparte.
+        // Si el maestro imparte en varios grados con distintas configuraciones,
+        // usamos el grado cuya config tenga el mayor sessionsPerDay para que
+        // la tabla muestre todas las filas posibles (las extra se marcan como
+        // _DisabledCell en el widget).
         Grade? grade;
-        if (teacher.sectionIds.isNotEmpty) {
-          final section = provider.findSection(teacher.sectionIds.first);
-          if (section != null) grade = provider.findGrade(section.gradeId);
+        {
+          Grade? bestGrade;
+          for (final slot in teacherSlots) {
+            // Buscar la sección del slot para obtener su grado.
+            final sec = provider.findSection(
+                provider.schedules
+                    .where((s) => s.slots.any((sl) =>
+                        sl.day == slot.day &&
+                        sl.periodIndex == slot.periodIndex &&
+                        sl.teacherId == teacher.id))
+                    .map((s) => s.sectionId)
+                    .firstOrNull ?? '');
+            final g = sec != null
+                ? provider.findGrade(sec.gradeId)
+                : null;
+            if (g != null) {
+              if (bestGrade == null ||
+                  g.config.sessionsPerDay > bestGrade.config.sessionsPerDay) {
+                bestGrade = g;
+              }
+            }
+          }
+          // Fallback secundario: si no encontramos nada por slots,
+          // buscar por assignments del maestro (más preciso que grades.first).
+          if (bestGrade == null && teacher.assignments.isNotEmpty) {
+            for (final a in teacher.assignments) {
+              final g = provider.findGrade(a.gradeId);
+              if (g != null) {
+                if (bestGrade == null ||
+                    g.config.sessionsPerDay > bestGrade.config.sessionsPerDay) {
+                  bestGrade = g;
+                }
+              }
+            }
+          }
+          grade = bestGrade ?? (provider.grades.isNotEmpty ? provider.grades.first : null);
         }
-        grade ??= provider.grades.isNotEmpty ? provider.grades.first : null;
 
         if (grade == null || teacherSlots.isEmpty) {
           return Card(
@@ -757,7 +799,8 @@ class _TeacherView extends StatelessWidget {
                   grade: grade,
                   subjects: provider.subjects,
                   teachers: provider.teachers,
-                  compact: true,
+                  compact: false,
+                  teacherView: true,
                   slotSectionLabel: (day, period) =>
                       slotSectionMap['$day-$period'],
                 ),

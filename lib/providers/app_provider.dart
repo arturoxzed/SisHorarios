@@ -356,6 +356,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> updateLevel(EducationalLevel level) async {
+    
     levels = levels.map((l) => l.id == level.id ? level : l).toList();
 
     grades = grades.map((g) {
@@ -420,14 +421,21 @@ class AppProvider extends ChangeNotifier {
   // ─── Grades ──────────────────────────────────
 
   Future<void> addGrade(Grade grade) async {
+    debugPrint('[GRADE ADD] fridayEarlyDismissal=\${grade.config.fridayEarlyDismissal} '
+        'fridayLastSession=\${grade.config.fridayLastSession} '
+        'sessionsPerDay=\${grade.config.sessionsPerDay}');
     grades = [...grades, grade];
     await _storage.saveGrades(grades);
     notifyListeners();
   }
 
   Future<void> updateGrade(Grade grade) async {
+    debugPrint('[GRADE SAVE] fridayEarlyDismissal=\${grade.config.fridayEarlyDismissal} '
+        'fridayLastSession=\${grade.config.fridayLastSession} '
+        'sessionsPerDay=\${grade.config.sessionsPerDay}');
     grades = grades.map((g) => g.id == grade.id ? grade : g).toList();
     await _storage.saveGrades(grades);
+    debugPrint('[GRADE SAVED] Verifying stored: \${grades.firstWhere((g) => g.id == grade.id).config.fridayLastSession}');
     notifyListeners();
   }
 
