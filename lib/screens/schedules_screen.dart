@@ -277,6 +277,7 @@ class _ResultPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
     final success      = !result.hasConflicts;
     final successCount =
         result.schedules.where((s) => !s.hasConflicts).length;
@@ -340,8 +341,13 @@ class _ResultPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...result.schedules.map((sched) {
-            final provider = context.read<AppProvider>();
+          ...(() {
+            final units = provider.allSchedulableUnits;
+            final idx = <String, int>{for (var i = 0; i < units.length; i++) units[i].id: i};
+            final sorted = [...result.schedules]..sort((a, b) =>
+                (idx[a.sectionId] ?? 999999).compareTo(idx[b.sectionId] ?? 999999));
+            return sorted;
+          }()).map((sched) {
             final section  = provider.findSection(sched.sectionId);
             final grade    = section != null
                 ? provider.findGrade(section.gradeId)
@@ -431,16 +437,16 @@ class _ExistingSchedulesSummary extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Horarios existentes (${provider.schedules.length} grupos)',
+          'Horarios existentes (${provider.sortedSchedules.length} grupos)',
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
         const SizedBox(height: 12),
         Expanded(
           child: ListView.separated(
-            itemCount: provider.schedules.length,
+            itemCount: provider.sortedSchedules.length,
             separatorBuilder: (_, __) => const SizedBox(height: 6),
             itemBuilder: (_, i) {
-              final sched   = provider.schedules[i];
+              final sched   = provider.sortedSchedules[i];
               final section = provider.findSection(sched.sectionId);
               final grade   = section != null
                   ? provider.findGrade(section.gradeId)

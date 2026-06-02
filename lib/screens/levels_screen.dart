@@ -62,19 +62,37 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                     color: Colors.grey, fontSize: 12)),
                           ),
                         )
-                      : ListView(
-                          children: provider.levels.map((level) {
+                      : ReorderableListView(
+                          onReorder: (oldIndex, newIndex) {
+                            if (newIndex > oldIndex) newIndex--;
+                            context.read<AppProvider>().reorderLevels(oldIndex, newIndex);
+                          },
+                          buildDefaultDragHandles: false,
+                          children: provider.levels.asMap().entries.map((entry) {
+                            final idx   = entry.key;
+                            final level = entry.value;
                             final isSelected = _selectedLevelId == level.id;
-                            return ListTile(
+                            return ReorderableDragStartListener(
+                              key: ValueKey(level.id),
+                              index: idx,
+                              child: ListTile(
                               dense: true,
                               selected: isSelected,
                               selectedTileColor:
                                   AppTheme.primary.withOpacity(0.08),
-                              leading: Icon(Icons.school_rounded,
-                                  size: 18,
-                                  color: isSelected
-                                      ? AppTheme.primary
-                                      : Colors.grey),
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.drag_handle_rounded,
+                                      size: 14, color: Colors.grey.shade400),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.school_rounded,
+                                      size: 18,
+                                      color: isSelected
+                                          ? AppTheme.primary
+                                          : Colors.grey),
+                                ],
+                              ),
                               title: Text(level.name,
                                   style: TextStyle(
                                     fontSize: 13,
@@ -150,6 +168,7 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                 _selectedLevelId = level.id;
                                 _selectedGradeId = null;
                               }),
+                            ),
                             );
                           }).toList(),
                         ),
@@ -204,22 +223,41 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                       color: Colors.grey, fontSize: 12)),
                             ),
                           )
-                        : ListView(
+                        : ReorderableListView(
+                            onReorder: (oldIndex, newIndex) {
+                              if (newIndex > oldIndex) newIndex--;
+                              context.read<AppProvider>().reorderGrades(_selectedLevelId!, oldIndex, newIndex);
+                            },
+                            buildDefaultDragHandles: false,
                             children: provider
                                 .gradesForLevel(_selectedLevelId!)
-                                .map((grade) {
+                                .asMap().entries
+                                .map((entry) {
+                              final idx   = entry.key;
+                              final grade = entry.value;
                               final isSelected =
                                   _selectedGradeId == grade.id;
-                              return ListTile(
+                              return ReorderableDragStartListener(
+                                key: ValueKey(grade.id),
+                                index: idx,
+                                child: ListTile(
                                 dense: true,
                                 selected: isSelected,
                                 selectedTileColor:
                                     AppTheme.primary.withOpacity(0.08),
-                                leading: Icon(Icons.layers_rounded,
-                                    size: 18,
-                                    color: isSelected
-                                        ? AppTheme.primary
-                                        : Colors.grey),
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.drag_handle_rounded,
+                                        size: 14, color: Colors.grey.shade400),
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.layers_rounded,
+                                        size: 18,
+                                        color: isSelected
+                                            ? AppTheme.primary
+                                            : Colors.grey),
+                                  ],
+                                ),
                                 title: Text(grade.name,
                                     style: TextStyle(
                                       fontSize: 13,
@@ -284,6 +322,7 @@ class _LevelsScreenState extends State<LevelsScreen> {
                                 ),
                                 onTap: () => setState(
                                     () => _selectedGradeId = grade.id),
+                              ),
                               );
                             }).toList(),
                           ),
@@ -481,129 +520,150 @@ class _GradeDetailPanel extends StatelessWidget {
                   ),
                 )
               else
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  children: grade.sections.map((section) {
-                    final hasSchedule =
-                        provider.scheduleForSection(section.id) != null;
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border:
-                            Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Text(
-                                section.name.isNotEmpty
-                                    ? section.name[0]
-                                    : '?',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700)),
-                            ),
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) newIndex--;
+                    context.read<AppProvider>().reorderSections(gradeId, oldIndex, newIndex);
+                  },
+                  buildDefaultDragHandles: false,
+                  children: (() {
+                    final sorted = [...grade.sections]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+                    return sorted.asMap().entries.map((entry) {
+                      final idx     = entry.key;
+                      final section = entry.value;
+                      final hasSchedule =
+                          provider.scheduleForSection(section.id) != null;
+                      return ReorderableDragStartListener(
+                        key: ValueKey(section.id),
+                        index: idx,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border:
+                                Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Text('Grupo ${section.name}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13)),
-                              Row(
-                                children: [
-                                  Icon(
-                                    hasSchedule
-                                        ? Icons.check_circle
-                                        : Icons.radio_button_unchecked,
-                                    size: 12,
-                                    color: hasSchedule
-                                        ? AppTheme.success
-                                        : Colors.grey,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    hasSchedule
-                                        ? 'Con horario'
-                                        : 'Sin horario',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: hasSchedule
-                                          ? AppTheme.success
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                ],
+                              // Drag handle
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(Icons.drag_handle_rounded,
+                                    size: 16, color: Colors.grey.shade400),
                               ),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 15),
-                            tooltip: 'Editar',
-                            onPressed: () => showDialog(
-                              context: context,
-                              builder: (_) => SectionDialog(
-                                gradeId: gradeId,
-                                levelId: levelId,
-                                existing: section,
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    section.name.isNotEmpty
+                                        ? section.name[0]
+                                        : '?',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700)),
+                                ),
                               ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete,
-                                size: 15, color: AppTheme.error),
-                            tooltip: 'Eliminar',
-                            onPressed: () async {
-                              final ok = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title:
-                                      const Text('Eliminar Grupo'),
-                                  content: Text(
-                                      '¿Eliminar el grupo "${section.name}"?'),
-                                  actions: [
-                                    TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(
-                                                context, false),
-                                        child:
-                                            const Text('Cancelar')),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              AppTheme.error),
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      child: const Text('Eliminar'),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Grupo ${section.name}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13)),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          hasSchedule
+                                              ? Icons.check_circle
+                                              : Icons.radio_button_unchecked,
+                                          size: 12,
+                                          color: hasSchedule
+                                              ? AppTheme.success
+                                              : Colors.grey,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          hasSchedule
+                                              ? 'Con horario'
+                                              : 'Sin horario',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: hasSchedule
+                                                ? AppTheme.success
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              );
-                              if (ok == true && context.mounted) {
-                                context
-                                    .read<AppProvider>()
-                                    .deleteSection(gradeId, section.id);
-                              }
-                            },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 15),
+                                tooltip: 'Editar',
+                                onPressed: () => showDialog(
+                                  context: context,
+                                  builder: (_) => SectionDialog(
+                                    gradeId: gradeId,
+                                    levelId: levelId,
+                                    existing: section,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete,
+                                    size: 15, color: AppTheme.error),
+                                tooltip: 'Eliminar',
+                                onPressed: () async {
+                                  final ok = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title:
+                                          const Text('Eliminar Grupo'),
+                                      content: Text(
+                                          '¿Eliminar el grupo "${section.name}"?'),
+                                      actions: [
+                                        TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(
+                                                    context, false),
+                                            child:
+                                                const Text('Cancelar')),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  AppTheme.error),
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text('Eliminar'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (ok == true && context.mounted) {
+                                    context
+                                        .read<AppProvider>()
+                                        .deleteSection(gradeId, section.id);
+                                  }
+                                },
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+                        ),
+                      );
+                    }).toList();
+                  })(),
                 ),
             ],
           ),

@@ -115,6 +115,11 @@ class EducationalLevel {
   final String name;
   final LevelType type;
 
+  /// Position in the ordered levels list. Stamped by [AppProvider.reorderLevels]
+  /// (and [AppProvider.addLevel]). Defaults to 0 for backward compatibility
+  /// so old records without this field still load cleanly.
+  final int sortOrder;
+
   // ── Salida programada igual para todos los grupos ────────────────────────
   /// Si true, todos los grados y grupos de este nivel salen a la misma hora
   /// todos los días de la semana.
@@ -127,6 +132,7 @@ class EducationalLevel {
     required this.id,
     required this.name,
     required this.type,
+    this.sortOrder = 0,
     this.scheduledDismissal = false,
     this.dismissalSessionIndex = 6,
   });
@@ -135,6 +141,7 @@ class EducationalLevel {
     String? id,
     String? name,
     LevelType? type,
+    int? sortOrder,
     bool? scheduledDismissal,
     int? dismissalSessionIndex,
   }) =>
@@ -142,6 +149,7 @@ class EducationalLevel {
         id: id ?? this.id,
         name: name ?? this.name,
         type: type ?? this.type,
+        sortOrder: sortOrder ?? this.sortOrder,
         scheduledDismissal: scheduledDismissal ?? this.scheduledDismissal,
         dismissalSessionIndex: dismissalSessionIndex ?? this.dismissalSessionIndex,
       );
@@ -150,6 +158,7 @@ class EducationalLevel {
         'id': id,
         'name': name,
         'type': type.index,
+        'sortOrder': sortOrder,
         'scheduledDismissal': scheduledDismissal,
         'dismissalSessionIndex': dismissalSessionIndex,
       };
@@ -158,6 +167,7 @@ class EducationalLevel {
         id: j['id'],
         name: j['name'],
         type: LevelType.values[j['type'] as int],
+        sortOrder: j['sortOrder'] ?? 0,
         scheduledDismissal: j['scheduledDismissal'] ?? false,
         dismissalSessionIndex: j['dismissalSessionIndex'] ?? 6,
       );
@@ -515,12 +525,17 @@ class Grade {
   final GradeConfig config;
   final List<Section> sections;
 
+  /// Custom sort order within the level. Lower values appear first.
+  /// Defaults to 0 (natural insertion order is maintained by the list itself).
+  final int sortOrder;
+
   const Grade({
     required this.id,
     required this.name,
     required this.levelId,
     this.config = const GradeConfig(),
     this.sections = const [],
+    this.sortOrder = 0,
   });
 
   Grade copyWith({
@@ -529,6 +544,7 @@ class Grade {
     String? levelId,
     GradeConfig? config,
     List<Section>? sections,
+    int? sortOrder,
   }) =>
       Grade(
         id: id ?? this.id,
@@ -536,6 +552,7 @@ class Grade {
         levelId: levelId ?? this.levelId,
         config: config ?? this.config,
         sections: sections ?? this.sections,
+        sortOrder: sortOrder ?? this.sortOrder,
       );
 
   Map<String, dynamic> toJson() => {
@@ -544,6 +561,7 @@ class Grade {
         'levelId': levelId,
         'config': config.toJson(),
         'sections': sections.map((s) => s.toJson()).toList(),
+        'sortOrder': sortOrder,
       };
 
   factory Grade.fromJson(Map<String, dynamic> j) => Grade(
@@ -552,6 +570,7 @@ class Grade {
         levelId: j['levelId'],
         config: GradeConfig.fromJson(j['config'] ?? {}),
         sections: (j['sections'] as List? ?? []).map((s) => Section.fromJson(s)).toList(),
+        sortOrder: (j['sortOrder'] ?? 0) as int,
       );
 }
 
@@ -565,29 +584,35 @@ class Section {
   final String gradeId;
   final String levelId;
 
+  /// Custom sort order within the grade. Lower values appear first.
+  final int sortOrder;
+
   const Section({
     required this.id,
     required this.name,
     required this.gradeId,
     required this.levelId,
+    this.sortOrder = 0,
   });
 
-  Section copyWith({String? id, String? name, String? gradeId, String? levelId}) =>
+  Section copyWith({String? id, String? name, String? gradeId, String? levelId, int? sortOrder}) =>
       Section(
         id: id ?? this.id,
         name: name ?? this.name,
         gradeId: gradeId ?? this.gradeId,
         levelId: levelId ?? this.levelId,
+        sortOrder: sortOrder ?? this.sortOrder,
       );
 
   Map<String, dynamic> toJson() =>
-      {'id': id, 'name': name, 'gradeId': gradeId, 'levelId': levelId};
+      {'id': id, 'name': name, 'gradeId': gradeId, 'levelId': levelId, 'sortOrder': sortOrder};
 
   factory Section.fromJson(Map<String, dynamic> j) => Section(
         id: j['id'],
         name: j['name'],
         gradeId: j['gradeId'],
         levelId: j['levelId'],
+        sortOrder: (j['sortOrder'] ?? 0) as int,
       );
 }
 

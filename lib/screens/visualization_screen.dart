@@ -293,7 +293,7 @@ class _VisualizationScreenState extends State<VisualizationScreen>
 
     try {
       if (type == 'all') {
-        for (final sched in provider.schedules) {
+        for (final sched in provider.sortedSchedules) {
           final section = provider.findSection(sched.sectionId);
           final grade =
               section != null ? provider.findGrade(section.gradeId) : null;
@@ -639,7 +639,7 @@ class _TeacherView extends StatelessWidget {
         // Track which sectionIds have already contributed a label per key
         // to prevent duplicate group names when a sectionId appears more than once.
         final Map<String, Set<String>> seenSectionPerKey = {};
-        for (final sched in provider.schedules) {
+        for (final sched in provider.sortedSchedules) {
           for (final slot in sched.slots) {
             if (slot.teacherId != teacher.id) continue;
             final key = '${slot.day}-${slot.periodIndex}';

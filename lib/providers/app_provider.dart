@@ -94,6 +94,12 @@ class AppProvider extends ChangeNotifier {
 
       // Migrate legacy teachers that have sectionIds but no assignments.
       teachers = _migrateLegacyTeachers(teachers);
+
+      // Migrate legacy levels that were created before sortOrder existed.
+      // If all levels share the same sortOrder value (e.g. all 0), they were
+      // never stamped — assign 0..n based on their current list position so
+      // allSchedulableUnits can group them correctly from the very first load.
+      levels = _migrateLevelSortOrder(levels);
     } catch (e) {
       errorMessage = 'Error al cargar datos: $e';
     }
@@ -147,7 +153,7 @@ class AppProvider extends ChangeNotifier {
     try {
       final cfg = result.config!;
 
-      levels = cfg.levels;
+      levels = _migrateLevelSortOrder(cfg.levels);
       grades = cfg.grades;
       subjects = cfg.subjects;
       teachers = _migrateLegacyTeachers(cfg.teachers);
@@ -222,6 +228,21 @@ class AppProvider extends ChangeNotifier {
     return migrated;
   }
 
+  /// Stamps [sortOrder] on levels that were created before the field existed.
+  /// Detection: if all levels have the same sortOrder (typically all 0), they
+  /// were never properly ordered — assign indices 0..n based on list position
+  /// and persist so subsequent loads use the correct order.
+  List<EducationalLevel> _migrateLevelSortOrder(List<EducationalLevel> raw) {
+    if (raw.isEmpty) return raw;
+    final allSame = raw.every((l) => l.sortOrder == raw.first.sortOrder);
+    if (!allSame) return raw; // already stamped — nothing to do
+    final stamped = [
+      for (var i = 0; i < raw.length; i++) raw[i].copyWith(sortOrder: i),
+    ];
+    _storage.saveLevels(stamped);
+    return stamped;
+  }
+
   Grade? _findGradeForSection(String sectionId) {
     for (final g in grades) {
       if (g.id == sectionId) return g;
@@ -237,23 +258,46 @@ class AppProvider extends ChangeNotifier {
 
   // ─── Derived helpers ─────────────────────────
 
-  List<Grade> gradesForLevel(String levelId) =>
-      grades.where((g) => g.levelId == levelId).toList();
+  List<Grade> gradesForLevel(String levelId) {
+    final result = grades.where((g) => g.levelId == levelId).toList();
+    result.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return result;
+  }
 
-  List<Section> get allSections => grades.expand((g) => g.sections).toList();
+  List<Section> get allSections {
+    final result = <Section>[];
+    // Sort levels first, then grades within each level, then sections within each grade.
+    final sortedLevels = [...levels]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    for (final lvl in sortedLevels) {
+      final levelGrades = grades.where((g) => g.levelId == lvl.id).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      for (final g in levelGrades) {
+        final sorted = [...g.sections]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        result.addAll(sorted);
+      }
+    }
+    return result;
+  }
 
   List<Section> get allSchedulableUnits {
     final result = <Section>[];
-    for (final g in grades) {
-      if (g.sections.isNotEmpty) {
-        result.addAll(g.sections);
-      } else {
-        result.add(Section(
-          id: g.id,
-          name: g.name,
-          gradeId: g.id,
-          levelId: g.levelId,
-        ));
+    // Sort levels first, then grades within each level, then sections within each grade.
+    final sortedLevels = [...levels]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    for (final lvl in sortedLevels) {
+      final levelGrades = grades.where((g) => g.levelId == lvl.id).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      for (final g in levelGrades) {
+        if (g.sections.isNotEmpty) {
+          final sorted = [...g.sections]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          result.addAll(sorted);
+        } else {
+          result.add(Section(
+            id: g.id,
+            name: g.name,
+            gradeId: g.id,
+            levelId: g.levelId,
+          ));
+        }
       }
     }
     return result;
@@ -262,7 +306,10 @@ class AppProvider extends ChangeNotifier {
   List<Section> sectionsForGrade(String gradeId) {
     try {
       final g = grades.firstWhere((g) => g.id == gradeId);
-      if (g.sections.isNotEmpty) return g.sections;
+      if (g.sections.isNotEmpty) {
+        final sorted = [...g.sections]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        return sorted;
+      }
       return [
         Section(id: g.id, name: g.name, gradeId: g.id, levelId: g.levelId)
       ];
@@ -350,7 +397,10 @@ class AppProvider extends ChangeNotifier {
   // ─── Educational Levels ──────────────────────
 
   Future<void> addLevel(EducationalLevel level) async {
-    levels = [...levels, level];
+    // Stamp sortOrder so new levels always go to the end of the list.
+    final maxOrder = levels.isEmpty ? -1 : levels.map((l) => l.sortOrder).reduce((a, b) => a > b ? a : b);
+    final stamped = level.copyWith(sortOrder: maxOrder + 1);
+    levels = [...levels, stamped];
     await _storage.saveLevels(levels);
     notifyListeners();
   }
@@ -421,10 +471,14 @@ class AppProvider extends ChangeNotifier {
   // ─── Grades ──────────────────────────────────
 
   Future<void> addGrade(Grade grade) async {
-    debugPrint('[GRADE ADD] fridayEarlyDismissal=\${grade.config.fridayEarlyDismissal} '
-        'fridayLastSession=\${grade.config.fridayLastSession} '
-        'sessionsPerDay=\${grade.config.sessionsPerDay}');
-    grades = [...grades, grade];
+    // Stamp sortOrder so new grades always go to the end of their level.
+    final existing = grades.where((g) => g.levelId == grade.levelId);
+    final maxOrder = existing.isEmpty ? -1 : existing.map((g) => g.sortOrder).reduce((a, b) => a > b ? a : b);
+    final stamped = grade.copyWith(sortOrder: maxOrder + 1);
+    debugPrint('[GRADE ADD] fridayEarlyDismissal=${stamped.config.fridayEarlyDismissal} '
+        'fridayLastSession=${stamped.config.fridayLastSession} '
+        'sessionsPerDay=${stamped.config.sessionsPerDay}');
+    grades = [...grades, stamped];
     await _storage.saveGrades(grades);
     notifyListeners();
   }
@@ -473,7 +527,10 @@ class AppProvider extends ChangeNotifier {
   Future<void> addSectionToGrade(String gradeId, Section section) async {
     grades = grades.map((g) {
       if (g.id != gradeId) return g;
-      return g.copyWith(sections: [...g.sections, section]);
+      // Stamp sortOrder so new sections always go to the end of their grade.
+      final maxOrder = g.sections.isEmpty ? -1 : g.sections.map((s) => s.sortOrder).reduce((a, b) => a > b ? a : b);
+      final stamped = section.copyWith(sortOrder: maxOrder + 1);
+      return g.copyWith(sections: [...g.sections, stamped]);
     }).toList();
     await _storage.saveGrades(grades);
     notifyListeners();
@@ -514,6 +571,64 @@ class AppProvider extends ChangeNotifier {
   }
 
   String generateId() => _uuid.v4();
+
+  // ─── Drag-and-drop reordering ─────────────────────────────────────────────
+
+  /// Reorders the [EducationalLevel] list. [oldIndex] and [newIndex] are the
+  /// indices in the *currently displayed* list (same as [levels]).
+  Future<void> reorderLevels(int oldIndex, int newIndex) async {
+    if (oldIndex == newIndex) return;
+    final list = [...levels]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    // Re-stamp sortOrder values 0..n in new order (same pattern as reorderGrades).
+    for (var i = 0; i < list.length; i++) {
+      list[i] = list[i].copyWith(sortOrder: i);
+    }
+    levels = list;
+    await _storage.saveLevels(levels);
+    notifyListeners();
+  }
+
+  /// Reorders grades within a level identified by [levelId].
+  Future<void> reorderGrades(String levelId, int oldIndex, int newIndex) async {
+    if (oldIndex == newIndex) return;
+    // Work on the sorted subset for this level.
+    final levelGrades = gradesForLevel(levelId); // already sorted by sortOrder
+    final moved = levelGrades.removeAt(oldIndex);
+    levelGrades.insert(newIndex, moved);
+    // Re-stamp sortOrder values 0..n in new order.
+    for (var i = 0; i < levelGrades.length; i++) {
+      levelGrades[i] = levelGrades[i].copyWith(sortOrder: i);
+    }
+    // Merge back into the global grades list, preserving other levels.
+    final updated = grades.map((g) {
+      if (g.levelId != levelId) return g;
+      return levelGrades.firstWhere((lg) => lg.id == g.id);
+    }).toList();
+    grades = updated;
+    await _storage.saveGrades(grades);
+    notifyListeners();
+  }
+
+  /// Reorders sections within a grade identified by [gradeId].
+  Future<void> reorderSections(String gradeId, int oldIndex, int newIndex) async {
+    if (oldIndex == newIndex) return;
+    grades = grades.map((g) {
+      if (g.id != gradeId) return g;
+      final sections = [...g.sections]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      final moved = sections.removeAt(oldIndex);
+      sections.insert(newIndex, moved);
+      // Re-stamp sortOrder values 0..n in new order.
+      final reordered = [
+        for (var i = 0; i < sections.length; i++)
+          sections[i].copyWith(sortOrder: i),
+      ];
+      return g.copyWith(sections: reordered);
+    }).toList();
+    await _storage.saveGrades(grades);
+    notifyListeners();
+  }
 
   // ─── Subjects ────────────────────────────────
 
@@ -787,14 +902,33 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Returns schedules sorted according to the visual order defined by
+  /// [allSchedulableUnits] (which respects [sortOrder] on grades and sections).
+  /// Any schedule whose sectionId doesn't appear in [allSchedulableUnits]
+  /// is appended at the end in their original insertion order.
+  List<SectionSchedule> get sortedSchedules {
+    final units = allSchedulableUnits;
+    final orderIndex = <String, int>{
+      for (var i = 0; i < units.length; i++) units[i].id: i,
+    };
+    return [...schedules]..sort((a, b) {
+        final ia = orderIndex[a.sectionId] ?? double.maxFinite.toInt();
+        final ib = orderIndex[b.sectionId] ?? double.maxFinite.toInt();
+        return ia.compareTo(ib);
+      });
+  }
+
   List<SectionSchedule> get filteredSchedules {
+    // Always use sortedSchedules as the base so visual order is consistent.
+    final sorted = sortedSchedules;
+
     if (filterSectionId != null) {
-      return schedules.where((s) => s.sectionId == filterSectionId).toList();
+      return sorted.where((s) => s.sectionId == filterSectionId).toList();
     }
     if (filterGradeId != null) {
       final ids = sectionsForGrade(filterGradeId!).map((s) => s.id).toSet();
       ids.add(filterGradeId!);
-      return schedules.where((s) => ids.contains(s.sectionId)).toList();
+      return sorted.where((s) => ids.contains(s.sectionId)).toList();
     }
     if (filterLevelId != null) {
       final gradeIds = gradesForLevel(filterLevelId!).map((g) => g.id).toSet();
@@ -803,17 +937,17 @@ class AppProvider extends ChangeNotifier {
           .expand((g) => g.sections)
           .map((s) => s.id)
           .toSet();
-      return schedules
+      return sorted
           .where((s) =>
               sectionIds.contains(s.sectionId) ||
               gradeIds.contains(s.sectionId))
           .toList();
     }
     if (filterTeacherId != null) {
-      return schedules
+      return sorted
           .where((s) => s.slots.any((sl) => sl.teacherId == filterTeacherId))
           .toList();
     }
-    return schedules;
+    return sorted;
   }
-}
+} 
